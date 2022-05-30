@@ -21,12 +21,12 @@
 //===----------------------------------------------------------------------===//
 
 // Generic Sim Format
-class SimInst<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern>: Instruction
-{
+class SimInst<bits<8> op, dag outs, dag ins, string asmstr,
+              list<dag> pattern> : Instruction {
   // Inst and Size: for tablegen(... -gen-emitter) and
   // tablegen(... -gen-disassembler) in CMakeLists.txt
-  let Namespace = "Sim";
-  let DecoderNamespace = "Sim";
+  let Namespace = "SIM";
+  let DecoderNamespace = "SIM";
   let Size = 4;
 
   field bits<32> Inst;
@@ -46,4 +46,35 @@ class SimInst<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern>: 
   let AsmString   = asmstr;
   let Pattern     = pattern;
 
+  let Itinerary = NoItinerary;
+}
+
+class ALU_ri<bits<8> opcode, string asmstr,
+             list<dag> pattern> : SimInst<opcode, (outs GPR:$r1), (ins GPR:$r2, GPR:$imm16),
+                                          asmstr # " $r1 $r2 $imm16", pattern> {
+  let mayLoad = 0;
+  let mayStore = 0;
+}
+
+
+class SimInstRegister<bits<8> opcode, dag outs,
+                      dag ins, string asmstr, list<dag> pattern> : SimInst<opcode, outs, ins, asmstr, pattern> {
+  bits<4> r3;
+
+  let Inst{15-12} = r3;
+  let Inst{11-0}  = 0;
+}
+
+class ALU_rr<bits<8> opcode, string asmstr,
+             list<dag> pattern> : SimInstRegister<opcode, (outs GPR:$r1), (ins GPR:$r2, GPR:$r3),
+                                                  asmstr # " $r1 $r2 $r3", pattern> {
+  let mayLoad = 0;
+  let mayStore = 0;
+}
+
+// Pseudo instructions format
+class SimPseudoInst<dag outs, dag ins, string asmstr, list<dag> pattern>
+   : SimInst<0, outs, ins, asmstr, pattern> {
+  let isPseudo = 1;
+  let isCodeGenOnly = 1;
 }

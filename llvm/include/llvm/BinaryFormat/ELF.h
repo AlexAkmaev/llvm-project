@@ -319,6 +319,7 @@ enum {
   EM_BPF = 247,           // Linux kernel bpf virtual machine
   EM_VE = 251,            // NEC SX-Aurora VE
   EM_CSKY = 252,          // C-SKY 32-bit processor
+  EM_SIM = 253,           // Sim
   EM_LOONGARCH = 258,     // LoongArch
 };
 
@@ -689,6 +690,19 @@ enum {
 // ELF Relocation type for Sparc.
 enum {
 #include "ELFRelocs/Sparc.def"
+};
+
+// ELF Relocation type for Sim.
+enum {
+#include "ELFRelocs/Sim.def"
+};
+
+// Sim Specific e_flags
+enum {
+    EF_SIM_NOREORDER = 0x00000001, // Don't reorder instructions
+    EF_SIM_PIC       = 0x00000002, // Position independent code
+    EF_SIM_ARCH_32   = 0x50000000, // Sim32 instruction set per linux not elf.h
+    EF_SIM_ARCH      = 0xf0000000  // Mask for applying EF_SIM_ARCH_ variant
 };
 
 // AMDGPU specific e_flags.
