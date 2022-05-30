@@ -16,11 +16,11 @@ class ConcurrentTwoWatchpointsOneDelayBreakpoint(ConcurrentEventsBase):
     @skipIf(
         oslist=["ios", "watchos", "tvos", "bridgeos", "macosx"],
         archs=['arm64', 'arm64e', 'arm64_32', 'arm'],
-        bugnumber="rdar://81811539")
+        bugnumber="rdar://93863107")
     @add_test_categories(["watchpoint"])
     def test(self):
         """Test two threads that trigger a watchpoint and one (1 second delay) breakpoint thread. """
-        self.build(dictionary=self.getBuildFlags())
+        self.build()
         self.do_thread_actions(
             num_watchpoint_threads=2,
             num_delay_breakpoint_threads=1)

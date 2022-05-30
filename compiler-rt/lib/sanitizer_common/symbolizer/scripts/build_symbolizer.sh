@@ -140,6 +140,7 @@ if [[ ! -d ${LLVM_BUILD} ]]; then
     -DLLVM_ENABLE_ZLIB=ON \
     -DLLVM_ENABLE_TERMINFO=OFF \
     -DLLVM_ENABLE_THREADS=OFF \
+    -DLLVM_DISABLE_ASSEMBLY_FILES=ON \
   $LLVM_SRC
 fi
 cd ${LLVM_BUILD}
@@ -155,7 +156,12 @@ SYMBOLIZER_FLAGS="$LLVM_FLAGS -I${LLVM_SRC}/include -I${LLVM_BUILD}/include -std
 $CXX $SYMBOLIZER_FLAGS ${SRC_DIR}/sanitizer_symbolize.cpp ${SRC_DIR}/sanitizer_wrappers.cpp -c
 $AR rc symbolizer.a sanitizer_symbolize.o sanitizer_wrappers.o
 
-SYMBOLIZER_API_LIST=__sanitizer_symbolize_code,__sanitizer_symbolize_data,__sanitizer_symbolize_flush,__sanitizer_symbolize_demangle
+SYMBOLIZER_API_LIST=__sanitizer_symbolize_code
+SYMBOLIZER_API_LIST+=,__sanitizer_symbolize_data
+SYMBOLIZER_API_LIST+=,__sanitizer_symbolize_flush
+SYMBOLIZER_API_LIST+=,__sanitizer_symbolize_demangle
+SYMBOLIZER_API_LIST+=,__sanitizer_symbolize_set_demangle
+SYMBOLIZER_API_LIST+=,__sanitizer_symbolize_set_inline_frames
 
 LIBCXX_ARCHIVE_DIR=$(dirname $(find $LIBCXX_BUILD -name libc++.a | head -n1))
 

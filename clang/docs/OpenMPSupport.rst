@@ -95,8 +95,6 @@ Features not supported or with limited support for Cuda devices
 
 - Nested parallelism: inner parallel regions are executed sequentially.
 
-- Static linking of libraries containing device code is not supported yet.
-
 - Automatic translation of math functions in target regions to device-specific
   math functions is not implemented yet.
 
@@ -338,7 +336,7 @@ want to help with the implementation.
 +------------------------------+--------------------------------------------------------------+--------------------------+-----------------------------------------------------------------------+
 | misc extension               | assume and assumes directives                                | :part:`worked on`        |                                                                       |
 +------------------------------+--------------------------------------------------------------+--------------------------+-----------------------------------------------------------------------+
-| misc extension               | nothing directive                                            | :none:`unclaimed`        |                                                                       |
+| misc extension               | nothing directive                                            | :part:`worked on`        |                                                                       |
 +------------------------------+--------------------------------------------------------------+--------------------------+-----------------------------------------------------------------------+
 | misc extension               | masked construct and related combined constructs             | :part:`worked on`        | D99995, D100514                                                       |
 +------------------------------+--------------------------------------------------------------+--------------------------+-----------------------------------------------------------------------+
@@ -371,9 +369,12 @@ documentation are provided.  As these extensions mature, they will be
 considered for standardization.  Please contact *openmp-dev* at
 *lists.llvm.org* to provide feedback.
 
-+------------------------------+---------------------------------------------------------------------------+--------------------------+--------------------------------------------------------+
-|Category                      | Feature                                                                   | Status                   | Reviews                                                |
-+==============================+===========================================================================+==========================+========================================================+
-| device extension             | `'ompx_hold' map type modifier                                            | :good:`prototyped`       | D106509, D106510                                       |
-|                              | <https://openmp.llvm.org/docs/openacc/OpenMPExtensions.html#ompx-hold>`_  |                          |                                                        |
-+------------------------------+---------------------------------------------------------------------------+--------------------------+--------------------------------------------------------+
++------------------------------+-----------------------------------------------------------------------------------+--------------------------+--------------------------------------------------------+
+|Category                      | Feature                                                                           | Status                   | Reviews                                                |
++==============================+===================================================================================+==========================+========================================================+
+| atomic extension             | `'atomic' strictly nested within 'teams'                                          | :good:`prototyped`       | D126323                                                |
+|                              | <https://openmp.llvm.org/docs/openacc/OpenMPExtensions.html#atomicWithinTeams>`_  |                          |                                                        |
++------------------------------+-----------------------------------------------------------------------------------+--------------------------+--------------------------------------------------------+
+| device extension             | `'ompx_hold' map type modifier                                                    | :good:`prototyped`       | D106509, D106510                                       |
+|                              | <https://openmp.llvm.org/docs/openacc/OpenMPExtensions.html#ompx-hold>`_          |                          |                                                        |
++------------------------------+-----------------------------------------------------------------------------------+--------------------------+--------------------------------------------------------+

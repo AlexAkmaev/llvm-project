@@ -49,7 +49,6 @@ from subprocess import *
 import sys
 import time
 import traceback
-import distutils.spawn
 
 # Third-party modules
 import unittest2
@@ -231,6 +230,11 @@ def pointer_size():
 
 def is_exe(fpath):
     """Returns true if fpath is an executable."""
+    if fpath == None:
+        return False
+    if sys.platform == 'win32':
+        if not fpath.endswith(".exe"):
+            fpath += ".exe"
     return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
 
@@ -1563,7 +1567,7 @@ class Base(unittest2.TestCase):
 
         # Tries to find clang at the same folder as the lldb
         lldb_dir = os.path.dirname(lldbtest_config.lldbExec)
-        path = distutils.spawn.find_executable("clang", lldb_dir)
+        path = shutil.which("clang", path=lldb_dir)
         if path is not None:
             return path
 
@@ -1583,51 +1587,6 @@ class Base(unittest2.TestCase):
         if max_size is not None:
             command += ["--max-size=%d" % max_size]
         self.runBuildCommand(command)
-
-    def getBuildFlags(
-            self,
-            use_cpp11=True,
-            use_libcxx=False,
-            use_libstdcxx=False):
-        """ Returns a dictionary (which can be provided to build* functions above) which
-            contains OS-specific build flags.
-        """
-        cflags = ""
-        ldflags = ""
-
-        # On Mac OS X, unless specifically requested to use libstdc++, use
-        # libc++
-        if not use_libstdcxx and self.platformIsDarwin():
-            use_libcxx = True
-
-        if use_libcxx and self.libcxxPath:
-            cflags += "-stdlib=libc++ "
-            if self.libcxxPath:
-                libcxxInclude = os.path.join(self.libcxxPath, "include")
-                libcxxLib = os.path.join(self.libcxxPath, "lib")
-                if os.path.isdir(libcxxInclude) and os.path.isdir(libcxxLib):
-                    cflags += "-nostdinc++ -I%s -L%s -Wl,-rpath,%s " % (
-                        libcxxInclude, libcxxLib, libcxxLib)
-
-        if use_cpp11:
-            cflags += "-std="
-            if "gcc" in self.getCompiler() and "4.6" in self.getCompilerVersion():
-                cflags += "c++0x"
-            else:
-                cflags += "c++11"
-        if self.platformIsDarwin() or self.getPlatform() == "freebsd":
-            cflags += " -stdlib=libc++"
-        elif self.getPlatform() == "openbsd":
-            cflags += " -stdlib=libc++"
-        elif self.getPlatform() == "netbsd":
-            # NetBSD defaults to libc++
-            pass
-        elif "clang" in self.getCompiler():
-            cflags += " -stdlib=libstdc++"
-
-        return {'CFLAGS_EXTRAS': cflags,
-                'LD_EXTRAS': ldflags,
-                }
 
     def cleanup(self, dictionary=None):
         """Platform specific way to do cleanup after build."""
@@ -2581,6 +2540,8 @@ FileCheck output:
         err.write(type.GetName() + ":\n")
         err.write('\t' + "ByteSize        -> " +
                   str(type.GetByteSize()) + '\n')
+        err.write('\t' + "IsAggregateType   -> " +
+                  str(type.IsAggregateType()) + '\n')
         err.write('\t' + "IsPointerType   -> " +
                   str(type.IsPointerType()) + '\n')
         err.write('\t' + "IsReferenceType -> " +

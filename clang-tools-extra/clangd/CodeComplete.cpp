@@ -21,7 +21,6 @@
 #include "AST.h"
 #include "CodeCompletionStrings.h"
 #include "Compiler.h"
-#include "Diagnostics.h"
 #include "ExpectedTypes.h"
 #include "FileDistance.h"
 #include "FuzzyMatch.h"
@@ -31,7 +30,6 @@
 #include "Protocol.h"
 #include "Quality.h"
 #include "SourceCode.h"
-#include "TUScheduler.h"
 #include "URI.h"
 #include "index/Index.h"
 #include "index/Symbol.h"
@@ -67,7 +65,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include <algorithm>
@@ -132,6 +129,8 @@ CompletionItemKind toCompletionItemKind(index::SymbolKind Kind) {
   case SK::TemplateTypeParm:
   case SK::TemplateTemplateParm:
     return CompletionItemKind::TypeParameter;
+  case SK::Concept:
+    return CompletionItemKind::Interface;
   }
   llvm_unreachable("Unhandled clang::index::SymbolKind.");
 }
@@ -304,6 +303,7 @@ struct CodeCompletionBuilder {
       assert(ASTCtx);
       Completion.Origin |= SymbolOrigin::AST;
       Completion.Name = std::string(llvm::StringRef(SemaCCS->getTypedText()));
+      Completion.FilterText = SemaCCS->getAllTypedText();
       if (Completion.Scope.empty()) {
         if ((C.SemaResult->Kind == CodeCompletionResult::RK_Declaration) ||
             (C.SemaResult->Kind == CodeCompletionResult::RK_Pattern))
@@ -336,6 +336,8 @@ struct CodeCompletionBuilder {
         Completion.Kind = toCompletionItemKind(C.IndexResult->SymInfo.Kind);
       if (Completion.Name.empty())
         Completion.Name = std::string(C.IndexResult->Name);
+      if (Completion.FilterText.empty())
+        Completion.FilterText = Completion.Name;
       // If the completion was visible to Sema, no qualifier is needed. This
       // avoids unneeded qualifiers in cases like with `using ns::X`.
       if (Completion.RequiredQualifier.empty() && !C.SemaResult) {
@@ -353,6 +355,7 @@ struct CodeCompletionBuilder {
       Completion.Origin |= SymbolOrigin::Identifier;
       Completion.Kind = CompletionItemKind::Text;
       Completion.Name = std::string(C.IdentifierResult->Name);
+      Completion.FilterText = Completion.Name;
     }
 
     // Turn absolute path into a literal string that can be #included.
@@ -420,7 +423,7 @@ struct CodeCompletionBuilder {
         SetDoc(C.IndexResult->Documentation);
       } else if (C.SemaResult) {
         const auto DocComment = getDocComment(*ASTCtx, *C.SemaResult,
-                                              /*CommentsFromHeader=*/false);
+                                              /*CommentsFromHeaders=*/false);
         SetDoc(formatDocumentation(*SemaCCS, DocComment));
       }
     }
@@ -453,7 +456,7 @@ private:
   template <std::string BundledEntry::*Member>
   const std::string *onlyValue() const {
     auto B = Bundled.begin(), E = Bundled.end();
-    for (auto I = B + 1; I != E; ++I)
+    for (auto *I = B + 1; I != E; ++I)
       if (I->*Member != B->*Member)
         return nullptr;
     return &(B->*Member);
@@ -461,7 +464,7 @@ private:
 
   template <bool BundledEntry::*Member> const bool *onlyValue() const {
     auto B = Bundled.begin(), E = Bundled.end();
-    for (auto I = B + 1; I != E; ++I)
+    for (auto *I = B + 1; I != E; ++I)
       if (I->*Member != B->*Member)
         return nullptr;
     return &(B->*Member);
@@ -861,7 +864,15 @@ struct CompletionRecorder : public CodeCompleteConsumer {
       return Result.Pattern->getTypedText();
     }
     auto *CCS = codeCompletionString(Result);
-    return CCS->getTypedText();
+    const CodeCompletionString::Chunk *OnlyText = nullptr;
+    for (auto &C : *CCS) {
+      if (C.Kind != CodeCompletionString::CK_TypedText)
+        continue;
+      if (OnlyText)
+        return CCAllocator->CopyString(CCS->getAllTypedText());
+      OnlyText = &C;
+    }
+    return OnlyText ? OnlyText->Text : llvm::StringRef();
   }
 
   // Build a CodeCompletion string for R, which must be from Results.
@@ -895,14 +906,9 @@ struct ScoredSignature {
 // part of it.
 int paramIndexForArg(const CodeCompleteConsumer::OverloadCandidate &Candidate,
                      int Arg) {
-  int NumParams = 0;
-  if (const auto *F = Candidate.getFunction()) {
-    NumParams = F->getNumParams();
-    if (F->isVariadic())
-      ++NumParams;
-  } else if (auto *T = Candidate.getFunctionType()) {
+  int NumParams = Candidate.getNumParams();
+  if (auto *T = Candidate.getFunctionType()) {
     if (auto *Proto = T->getAs<FunctionProtoType>()) {
-      NumParams = Proto->getNumParams();
       if (Proto->isVariadic())
         ++NumParams;
     }
@@ -923,7 +929,8 @@ public:
   void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
                                  OverloadCandidate *Candidates,
                                  unsigned NumCandidates,
-                                 SourceLocation OpenParLoc) override {
+                                 SourceLocation OpenParLoc,
+                                 bool Braced) override {
     assert(!OpenParLoc.isInvalid());
     SourceManager &SrcMgr = S.getSourceManager();
     OpenParLoc = SrcMgr.getFileLoc(OpenParLoc);
@@ -964,7 +971,8 @@ public:
       }
 
       const auto *CCS = Candidate.CreateSignatureString(
-          CurrentArg, S, *Allocator, CCTUInfo, true);
+          CurrentArg, S, *Allocator, CCTUInfo,
+          /*IncludeBriefComments=*/true, Braced);
       assert(CCS && "Expected the CodeCompletionString to be non-null");
       ScoredSignatures.push_back(processOverloadCandidate(
           Candidate, *CCS,
@@ -996,8 +1004,7 @@ public:
                                     const ScoredSignature &R) {
       // Ordering follows:
       // - Less number of parameters is better.
-      // - Function is better than FunctionType which is better than
-      // Function Template.
+      // - Aggregate > Function > FunctionType > FunctionTemplate
       // - High score is better.
       // - Shorter signature is better.
       // - Alphabetically smaller is better.
@@ -1009,15 +1016,22 @@ public:
                R.Quality.NumberOfOptionalParameters;
       if (L.Quality.Kind != R.Quality.Kind) {
         using OC = CodeCompleteConsumer::OverloadCandidate;
-        switch (L.Quality.Kind) {
-        case OC::CK_Function:
-          return true;
-        case OC::CK_FunctionType:
-          return R.Quality.Kind != OC::CK_Function;
-        case OC::CK_FunctionTemplate:
-          return false;
-        }
-        llvm_unreachable("Unknown overload candidate type.");
+        auto KindPriority = [&](OC::CandidateKind K) {
+          switch (K) {
+          case OC::CK_Aggregate:
+            return 1;
+          case OC::CK_Function:
+            return 2;
+          case OC::CK_FunctionType:
+            return 3;
+          case OC::CK_FunctionTemplate:
+            return 4;
+          case OC::CK_Template:
+            return 5;
+          }
+          llvm_unreachable("Unknown overload candidate type.");
+        };
+        return KindPriority(L.Quality.Kind) < KindPriority(R.Quality.Kind);
       }
       if (L.Signature.label.size() != R.Signature.label.size())
         return L.Signature.label.size() < R.Signature.label.size();
@@ -1162,24 +1176,15 @@ public:
   void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
                                  OverloadCandidate *Candidates,
                                  unsigned NumCandidates,
-                                 SourceLocation OpenParLoc) override {
+                                 SourceLocation OpenParLoc,
+                                 bool Braced) override {
     assert(CurrentArg <= (unsigned)std::numeric_limits<int>::max() &&
            "too many arguments");
 
     for (unsigned I = 0; I < NumCandidates; ++I) {
-      OverloadCandidate Candidate = Candidates[I];
-      auto *Func = Candidate.getFunction();
-      if (!Func || Func->getNumParams() <= CurrentArg)
-        continue;
-      auto *PVD = Func->getParamDecl(CurrentArg);
-      if (!PVD)
-        continue;
-      auto *Ident = PVD->getIdentifier();
-      if (!Ident)
-        continue;
-      auto Name = Ident->getName();
-      if (!Name.empty())
-        ParamNames.insert(Name.str());
+      if (const NamedDecl *ND = Candidates[I].getParamDecl(CurrentArg))
+        if (const auto *II = ND->getIdentifier())
+          ParamNames.emplace(II->getName());
     }
   }
 
@@ -1987,6 +1992,7 @@ CodeCompleteResult codeCompleteComment(PathRef FileName, unsigned Offset,
       continue;
     CodeCompletion Item;
     Item.Name = Name.str() + "=";
+    Item.FilterText = Item.Name;
     Item.Kind = CompletionItemKind::Text;
     Result.Completions.push_back(Item);
   }
@@ -2125,8 +2131,8 @@ CompletionItem CodeCompletion::render(const CodeCompleteOptions &Opts) const {
       Doc.append(*Documentation);
     LSP.documentation = renderDoc(Doc, Opts.DocumentationFormat);
   }
-  LSP.sortText = sortText(Score.Total, Name);
-  LSP.filterText = Name;
+  LSP.sortText = sortText(Score.Total, FilterText);
+  LSP.filterText = FilterText;
   LSP.textEdit = {CompletionTokenRange, RequiredQualifier + Name};
   // Merge continuous additionalTextEdits into main edit. The main motivation
   // behind this is to help LSP clients, it seems most of them are confused when

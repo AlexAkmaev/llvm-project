@@ -25,6 +25,7 @@
 #define LLVM_TRANSFORMS_VECTORIZE_LOOPVECTORIZATIONPLANNER_H
 
 #include "VPlan.h"
+#include "llvm/Support/InstructionCost.h"
 
 namespace llvm {
 
@@ -45,20 +46,21 @@ class VPBuilder {
   VPBasicBlock::iterator InsertPt = VPBasicBlock::iterator();
 
   VPInstruction *createInstruction(unsigned Opcode,
-                                   ArrayRef<VPValue *> Operands) {
-    VPInstruction *Instr = new VPInstruction(Opcode, Operands);
+                                   ArrayRef<VPValue *> Operands, DebugLoc DL) {
+    VPInstruction *Instr = new VPInstruction(Opcode, Operands, DL);
     if (BB)
       BB->insert(Instr, InsertPt);
     return Instr;
   }
 
   VPInstruction *createInstruction(unsigned Opcode,
-                                   std::initializer_list<VPValue *> Operands) {
-    return createInstruction(Opcode, ArrayRef<VPValue *>(Operands));
+                                   std::initializer_list<VPValue *> Operands,
+                                   DebugLoc DL) {
+    return createInstruction(Opcode, ArrayRef<VPValue *>(Operands), DL);
   }
 
 public:
-  VPBuilder() {}
+  VPBuilder() = default;
 
   /// Clear the insertion point: created instructions will not be inserted into
   /// a block.
@@ -123,25 +125,33 @@ public:
   /// its underlying Instruction.
   VPValue *createNaryOp(unsigned Opcode, ArrayRef<VPValue *> Operands,
                         Instruction *Inst = nullptr) {
-    VPInstruction *NewVPInst = createInstruction(Opcode, Operands);
+    DebugLoc DL;
+    if (Inst)
+      DL = Inst->getDebugLoc();
+    VPInstruction *NewVPInst = createInstruction(Opcode, Operands, DL);
     NewVPInst->setUnderlyingValue(Inst);
     return NewVPInst;
   }
-
-  VPValue *createNot(VPValue *Operand) {
-    return createInstruction(VPInstruction::Not, {Operand});
+  VPValue *createNaryOp(unsigned Opcode, ArrayRef<VPValue *> Operands,
+                        DebugLoc DL) {
+    return createInstruction(Opcode, Operands, DL);
   }
 
-  VPValue *createAnd(VPValue *LHS, VPValue *RHS) {
-    return createInstruction(Instruction::BinaryOps::And, {LHS, RHS});
+  VPValue *createNot(VPValue *Operand, DebugLoc DL) {
+    return createInstruction(VPInstruction::Not, {Operand}, DL);
   }
 
-  VPValue *createOr(VPValue *LHS, VPValue *RHS) {
-    return createInstruction(Instruction::BinaryOps::Or, {LHS, RHS});
+  VPValue *createAnd(VPValue *LHS, VPValue *RHS, DebugLoc DL) {
+    return createInstruction(Instruction::BinaryOps::And, {LHS, RHS}, DL);
   }
 
-  VPValue *createSelect(VPValue *Cond, VPValue *TrueVal, VPValue *FalseVal) {
-    return createNaryOp(Instruction::Select, {Cond, TrueVal, FalseVal});
+  VPValue *createOr(VPValue *LHS, VPValue *RHS, DebugLoc DL) {
+    return createInstruction(Instruction::BinaryOps::Or, {LHS, RHS}, DL);
+  }
+
+  VPValue *createSelect(VPValue *Cond, VPValue *TrueVal, VPValue *FalseVal,
+                        DebugLoc DL) {
+    return createNaryOp(Instruction::Select, {Cond, TrueVal, FalseVal}, DL);
   }
 
   //===--------------------------------------------------------------------===//
@@ -309,6 +319,9 @@ public:
   static bool
   getDecisionAndClampRange(const std::function<bool(ElementCount)> &Predicate,
                            VFRange &Range);
+
+  /// Check if the number of runtime checks exceeds the threshold.
+  bool requiresTooManyRuntimeChecks() const;
 
 protected:
   /// Collect the instructions from the original loop that would be trivially

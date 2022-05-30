@@ -129,16 +129,16 @@ Optional<std::string> Process::GetEnv(StringRef Name) {
   SmallVector<wchar_t, MAX_PATH> Buf;
   size_t Size = MAX_PATH;
   do {
-    Buf.reserve(Size);
+    Buf.resize_for_overwrite(Size);
     SetLastError(NO_ERROR);
     Size =
-      GetEnvironmentVariableW(NameUTF16.data(), Buf.data(), Buf.capacity());
+      GetEnvironmentVariableW(NameUTF16.data(), Buf.data(), Buf.size());
     if (Size == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND)
       return None;
 
     // Try again with larger buffer.
-  } while (Size > Buf.capacity());
-  Buf.set_size(Size);
+  } while (Size > Buf.size());
+  Buf.truncate(Size);
 
   // Convert the result from UTF-16 to UTF-8.
   SmallVector<char, MAX_PATH> Res;
@@ -247,13 +247,16 @@ windows::GetCommandLineArguments(SmallVectorImpl<const char *> &Args,
 
   SmallVector<const char *, 20> TmpArgs;
   StringSaver Saver(Alloc);
-  cl::TokenizeWindowsCommandLine(Cmd, Saver, TmpArgs, /*MarkEOLs=*/false);
+  cl::TokenizeWindowsCommandLineFull(Cmd, Saver, TmpArgs, /*MarkEOLs=*/false);
 
   for (const char *Arg : TmpArgs) {
     EC = WildcardExpand(Arg, Args, Saver);
     if (EC)
       return EC;
   }
+
+  if (Args.size() == 0)
+    return std::make_error_code(std::errc::invalid_argument);
 
   SmallVector<char, MAX_PATH> Arg0(Args[0], Args[0] + strlen(Args[0]));
   SmallVector<char, MAX_PATH> Filename;

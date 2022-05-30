@@ -12,7 +12,7 @@ if (DEFINED LLVM_HAVE_TF_AOT OR DEFINED LLVM_HAVE_TF_API)
       ${LLVM_INLINER_MODEL_PATH}
       ${LLVM_INLINER_MODEL_CURRENT_URL}
       ${LLVM_INLINER_MODEL_PATH_DEFAULT}
-      "models/inlining/config.py"
+      "models/gen-inline-oz-test-model.py"
       serve
       action
       InlinerSizeModel
@@ -131,6 +131,7 @@ add_llvm_component_library(LLVMAnalysis
   SyncDependenceAnalysis.cpp
   SyntheticCountsUtils.cpp
   TFUtils.cpp
+  TensorSpec.cpp
   TargetLibraryInfo.cpp
   TargetTransformInfo.cpp
   Trace.cpp

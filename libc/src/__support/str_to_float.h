@@ -21,8 +21,6 @@ namespace __llvm_libc {
 namespace internal {
 
 template <class T> uint32_t inline leading_zeroes(T inputNumber) {
-  // TODO(michaelrj): investigate the portability of using something like
-  // __builtin_clz for specific types.
   constexpr uint32_t BITS_IN_T = sizeof(T) * 8;
   if (inputNumber == 0) {
     return BITS_IN_T;
@@ -181,6 +179,114 @@ eisel_lemire(typename fputil::FPBits<T>::UIntType mantissa, int32_t exp10,
   *outputExp2 = exp2;
   return true;
 }
+
+#if !defined(LONG_DOUBLE_IS_DOUBLE)
+template <>
+inline bool eisel_lemire<long double>(
+    typename fputil::FPBits<long double>::UIntType mantissa, int32_t exp10,
+    typename fputil::FPBits<long double>::UIntType *outputMantissa,
+    uint32_t *outputExp2) {
+  using BitsType = typename fputil::FPBits<long double>::UIntType;
+  constexpr uint32_t BITS_IN_MANTISSA = sizeof(mantissa) * 8;
+
+  // Exp10 Range
+  // This doesn't reach very far into the range for long doubles, since it's
+  // sized for doubles and their 11 exponent bits, and not for long doubles and
+  // their 15 exponent bits (max exponent of ~300 for double vs ~5000 for long
+  // double). This is a known tradeoff, and was made because a proper long
+  // double table would be approximately 16 times larger. This would have
+  // significant memory and storage costs all the time to speed up a relatively
+  // uncommon path. In addition the exp10_to_exp2 function only approximates
+  // multiplying by log(10)/log(2), and that approximation may not be accurate
+  // out to the full long double range.
+  if (exp10 < DETAILED_POWERS_OF_TEN_MIN_EXP_10 ||
+      exp10 > DETAILED_POWERS_OF_TEN_MAX_EXP_10) {
+    return false;
+  }
+
+  // Normalization
+  uint32_t clz = leading_zeroes<BitsType>(mantissa);
+  mantissa <<= clz;
+
+  uint32_t exp2 = exp10_to_exp2(exp10) + BITS_IN_MANTISSA +
+                  fputil::FloatProperties<long double>::EXPONENT_BIAS - clz;
+
+  // Multiplication
+  const uint64_t *power_of_ten =
+      DETAILED_POWERS_OF_TEN[exp10 - DETAILED_POWERS_OF_TEN_MIN_EXP_10];
+
+  // Since the input mantissa is more than 64 bits, we have to multiply with the
+  // full 128 bits of the power of ten to get an approximation with the same
+  // number of significant bits. This means that we only get the one
+  // approximation, and that approximation is 256 bits long.
+  __uint128_t approx_upper = static_cast<__uint128_t>(high64(mantissa)) *
+                             static_cast<__uint128_t>(power_of_ten[1]);
+
+  __uint128_t approx_middle = static_cast<__uint128_t>(high64(mantissa)) *
+                                  static_cast<__uint128_t>(power_of_ten[0]) +
+                              static_cast<__uint128_t>(low64(mantissa)) *
+                                  static_cast<__uint128_t>(power_of_ten[1]);
+
+  __uint128_t approx_lower = static_cast<__uint128_t>(low64(mantissa)) *
+                             static_cast<__uint128_t>(power_of_ten[0]);
+
+  __uint128_t final_approx_lower =
+      approx_lower + (static_cast<__uint128_t>(low64(approx_middle)) << 64);
+  __uint128_t final_approx_upper = approx_upper + high64(approx_middle) +
+                                   (final_approx_lower < approx_lower ? 1 : 0);
+
+  // The halfway constant is used to check if the bits that will be shifted away
+  // intially are all 1. For 80 bit floats this is 128 (bitstype size) - 64
+  // (final mantissa size) - 3 (we shift away the last two bits separately for
+  // accuracy, and the most significant bit is ignored.) = 61 bits. Similarly,
+  // it's 12 bits for 128 bit floats in this case.
+  constexpr __uint128_t HALFWAY_CONSTANT =
+      (__uint128_t(1) << (BITS_IN_MANTISSA -
+                          fputil::FloatProperties<long double>::MANTISSA_WIDTH -
+                          3)) -
+      1;
+
+  if ((final_approx_upper & HALFWAY_CONSTANT) == HALFWAY_CONSTANT &&
+      final_approx_lower + mantissa < mantissa) {
+    return false;
+  }
+
+  // Shifting to 65 bits for 80 bit floats and 113 bits for 128 bit floats
+  BitsType msb = final_approx_upper >> (BITS_IN_MANTISSA - 1);
+  BitsType final_mantissa =
+      final_approx_upper >>
+      (msb + BITS_IN_MANTISSA -
+       (fputil::FloatProperties<long double>::MANTISSA_WIDTH + 3));
+  exp2 -= 1 ^ msb; // same as !msb
+
+  // Half-way ambiguity
+  if (final_approx_lower == 0 && (final_approx_upper & HALFWAY_CONSTANT) == 0 &&
+      (final_mantissa & 3) == 1) {
+    return false;
+  }
+
+  // From 65 to 64 bits for 80 bit floats and 113  to 112 bits for 128 bit
+  // floats
+  final_mantissa += final_mantissa & 1;
+  final_mantissa >>= 1;
+  if ((final_mantissa >>
+       (fputil::FloatProperties<long double>::MANTISSA_WIDTH + 1)) > 0) {
+    final_mantissa >>= 1;
+    ++exp2;
+  }
+
+  // The if block is equivalent to (but has fewer branches than):
+  //   if exp2 <= 0 || exp2 >= MANTISSA_MAX { etc }
+  if (exp2 - 1 >=
+      (1 << fputil::FloatProperties<long double>::EXPONENT_WIDTH) - 2) {
+    return false;
+  }
+
+  *outputMantissa = final_mantissa;
+  *outputExp2 = exp2;
+  return true;
+}
+#endif
 
 // The nth item in POWERS_OF_TWO represents the greatest power of two less than
 // 10^n. This tells us how much we can safely shift without overshooting.
@@ -352,8 +458,9 @@ public:
 #if defined(LONG_DOUBLE_IS_DOUBLE)
 template <> class ClingerConsts<long double> {
 public:
-  static constexpr long double POWERS_OF_TEN_ARRAY[] =
-      ClingerConsts<double>::POWERS_OF_TEN_ARRAY;
+  static constexpr long double POWERS_OF_TEN_ARRAY[] = {
+      1e0,  1e1,  1e2,  1e3,  1e4,  1e5,  1e6,  1e7,  1e8,  1e9,  1e10, 1e11,
+      1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22};
   static constexpr int32_t EXACT_POWERS_OF_TEN =
       ClingerConsts<double>::EXACT_POWERS_OF_TEN;
   static constexpr int32_t DIGITS_IN_MANTISSA =

@@ -926,6 +926,41 @@ struct OperandTraits<DSOLocalEquivalent>
 
 DEFINE_TRANSPARENT_OPERAND_ACCESSORS(DSOLocalEquivalent, Value)
 
+/// Wrapper for a value that won't be replaced with a CFI jump table
+/// pointer in LowerTypeTestsModule.
+class NoCFIValue final : public Constant {
+  friend class Constant;
+
+  NoCFIValue(GlobalValue *GV);
+
+  void *operator new(size_t S) { return User::operator new(S, 1); }
+
+  void destroyConstantImpl();
+  Value *handleOperandChangeImpl(Value *From, Value *To);
+
+public:
+  /// Return a NoCFIValue for the specified function.
+  static NoCFIValue *get(GlobalValue *GV);
+
+  /// Transparently provide more efficient getOperand methods.
+  DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
+
+  GlobalValue *getGlobalValue() const {
+    return cast<GlobalValue>(Op<0>().get());
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast:
+  static bool classof(const Value *V) {
+    return V->getValueID() == NoCFIValueVal;
+  }
+};
+
+template <>
+struct OperandTraits<NoCFIValue> : public FixedNumOperandTraits<NoCFIValue, 1> {
+};
+
+DEFINE_TRANSPARENT_OPERAND_ACCESSORS(NoCFIValue, Value)
+
 //===----------------------------------------------------------------------===//
 /// A constant value that is initialized with an expression using
 /// other constant values.
@@ -1125,6 +1160,11 @@ public:
                     Type *Ty     ///< The type to trunc or bitcast C to
   );
 
+  /// Create either an sext, trunc or nothing, depending on whether Ty is
+  /// wider, narrower or the same as C->getType(). This only works with
+  /// integer or vector of integer types.
+  static Constant *getSExtOrTrunc(Constant *C, Type *Ty);
+
   /// Create a BitCast, AddrSpaceCast, or a PtrToInt cast constant
   /// expression.
   static Constant *
@@ -1160,13 +1200,6 @@ public:
   /// Return true if this is an insertvalue or extractvalue expression,
   /// and the getIndices() method may be used.
   bool hasIndices() const;
-
-  /// Return true if this is a getelementptr expression and all
-  /// the index operands are compile-time known integers within the
-  /// corresponding notional static array extents. Note that this is
-  /// not equivalant to, a subset of, or a superset of the "inbounds"
-  /// property.
-  bool isGEPWithNoNotionalOverIndexing() const;
 
   /// Select constant expr
   ///

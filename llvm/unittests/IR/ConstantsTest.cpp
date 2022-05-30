@@ -134,6 +134,9 @@ TEST(ConstantsTest, PointerCast) {
   VectorType *Int8PtrVecTy = FixedVectorType::get(Int8PtrTy, 4);
   VectorType *Int32PtrVecTy = FixedVectorType::get(Int32PtrTy, 4);
   VectorType *Int64VecTy = FixedVectorType::get(Int64Ty, 4);
+  VectorType *Int8PtrScalableVecTy = ScalableVectorType::get(Int8PtrTy, 4);
+  VectorType *Int32PtrScalableVecTy = ScalableVectorType::get(Int32PtrTy, 4);
+  VectorType *Int64ScalableVecTy = ScalableVectorType::get(Int64Ty, 4);
 
   // ptrtoint i8* to i64
   EXPECT_EQ(
@@ -150,10 +153,22 @@ TEST(ConstantsTest, PointerCast) {
             ConstantExpr::getPointerCast(Constant::getNullValue(Int8PtrVecTy),
                                          Int64VecTy));
 
+  // ptrtoint <vscale x 4 x i8*> to <vscale x 4 x i64>
+  EXPECT_EQ(
+      Constant::getNullValue(Int64ScalableVecTy),
+      ConstantExpr::getPointerCast(Constant::getNullValue(Int8PtrScalableVecTy),
+                                   Int64ScalableVecTy));
+
   // bitcast <4 x i8*> to <4 x i32*>
   EXPECT_EQ(Constant::getNullValue(Int32PtrVecTy),
             ConstantExpr::getPointerCast(Constant::getNullValue(Int8PtrVecTy),
                                          Int32PtrVecTy));
+
+  // bitcast <vscale x 4 x i8*> to <vscale x 4 x i32*>
+  EXPECT_EQ(
+      Constant::getNullValue(Int32PtrScalableVecTy),
+      ConstantExpr::getPointerCast(Constant::getNullValue(Int8PtrScalableVecTy),
+                                   Int32PtrScalableVecTy));
 
   Type *Int32Ptr1Ty = Type::getInt32PtrTy(C, 1);
   ConstantInt *K = ConstantInt::get(Type::getInt64Ty(C), 1234);
@@ -469,8 +484,9 @@ TEST(ConstantsTest, BuildConstantDataVectors) {
   }
 }
 
-TEST(ConstantsTest, BitcastToGEP) {
+void bitcastToGEPHelper(bool useOpaquePointers) {
   LLVMContext Context;
+  Context.setOpaquePointers(useOpaquePointers);
   std::unique_ptr<Module> M(new Module("MyModule", Context));
 
   auto *i32 = Type::getInt32Ty(Context);
@@ -488,6 +504,11 @@ TEST(ConstantsTest, BitcastToGEP) {
     /* With opaque pointers, no cast is necessary. */
     EXPECT_EQ(C, G);
   }
+}
+
+TEST(ConstantsTest, BitcastToGEP) {
+  bitcastToGEPHelper(true);
+  bitcastToGEPHelper(false);
 }
 
 bool foldFuncPtrAndConstToNull(LLVMContext &Context, Module *TheModule,
@@ -761,6 +782,33 @@ TEST(ConstantsTest, GetSplatValueRoundTrip) {
       }
     }
   }
+}
+
+TEST(ConstantsTest, ComdatUserTracking) {
+  LLVMContext Context;
+  Module M("MyModule", Context);
+
+  Comdat *C = M.getOrInsertComdat("comdat");
+  const SmallPtrSetImpl<GlobalObject *> &Users = C->getUsers();
+  EXPECT_TRUE(Users.size() == 0);
+
+  Type *Ty = Type::getInt8Ty(Context);
+  GlobalVariable *GV1 = cast<GlobalVariable>(M.getOrInsertGlobal("gv1", Ty));
+  GV1->setComdat(C);
+  EXPECT_TRUE(Users.size() == 1);
+  EXPECT_TRUE(Users.contains(GV1));
+
+  GlobalVariable *GV2 = cast<GlobalVariable>(M.getOrInsertGlobal("gv2", Ty));
+  GV2->setComdat(C);
+  EXPECT_TRUE(Users.size() == 2);
+  EXPECT_TRUE(Users.contains(GV2));
+
+  GV1->eraseFromParent();
+  EXPECT_TRUE(Users.size() == 1);
+  EXPECT_TRUE(Users.contains(GV2));
+
+  GV2->eraseFromParent();
+  EXPECT_TRUE(Users.size() == 0);
 }
 
 } // end anonymous namespace

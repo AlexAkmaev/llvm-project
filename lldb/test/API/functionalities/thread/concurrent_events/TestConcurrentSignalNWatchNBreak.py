@@ -19,11 +19,11 @@ class ConcurrentSignalNWatchNBreak(ConcurrentEventsBase):
     @skipIf(
         oslist=["ios", "watchos", "tvos", "bridgeos", "macosx"],
         archs=['arm64', 'arm64e', 'arm64_32', 'arm'],
-        bugnumber="rdar://81811539")
+        bugnumber="rdar://93863107")
     @add_test_categories(["watchpoint"])
     def test(self):
         """Test one signal thread with 5 watchpoint and breakpoint threads."""
-        self.build(dictionary=self.getBuildFlags())
+        self.build()
         self.do_thread_actions(num_signal_threads=1,
                                num_watchpoint_threads=5,
                                num_breakpoint_threads=5)

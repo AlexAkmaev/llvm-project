@@ -132,7 +132,7 @@ static auto getLoopMDProps(MDNode *LoopMD) {
 
 /// Recursively visit all nodes in a schedule, loop for loop-transformations
 /// metadata and apply the first encountered.
-class SearchTransformVisitor
+class SearchTransformVisitor final
     : public RecursiveScheduleTreeVisitor<SearchTransformVisitor> {
 private:
   using BaseTy = RecursiveScheduleTreeVisitor<SearchTransformVisitor>;
@@ -271,7 +271,6 @@ public:
       }
 
       // not a loop transformation; look for next property
-      continue;
     }
   }
 

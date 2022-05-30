@@ -66,11 +66,37 @@ declare_mlir_dialect_python_bindings(
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT MLIRPythonSources.Dialects
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+  TD_FILE dialects/BufferizationOps.td
+  SOURCES
+    dialects/bufferization.py
+    dialects/_bufferization_ops_ext.py
+  DIALECT_NAME bufferization)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT MLIRPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
   TD_FILE dialects/BuiltinOps.td
   SOURCES
     dialects/builtin.py
     dialects/_builtin_ops_ext.py
   DIALECT_NAME builtin)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT MLIRPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+  TD_FILE dialects/ControlFlowOps.td
+  SOURCES
+    dialects/cf.py
+  DIALECT_NAME cf)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT MLIRPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+  TD_FILE dialects/FuncOps.td
+  SOURCES
+    dialects/func.py
+    dialects/_func_ops_ext.py
+  DIALECT_NAME func)
 
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT MLIRPythonSources.Dialects
@@ -118,6 +144,33 @@ declare_mlir_dialect_python_bindings(
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT MLIRPythonSources.Dialects
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+  TD_FILE dialects/MLProgramOps.td
+  SOURCES
+    dialects/ml_program.py
+    dialects/_ml_program_ops_ext.py
+  DIALECT_NAME ml_program)
+
+declare_mlir_python_sources(
+  MLIRPythonSources.Dialects.quant
+  ADD_TO_PARENT MLIRPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+  SOURCES
+    dialects/quant.py
+    _mlir_libs/_mlir/dialects/quant.pyi)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT MLIRPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+  TD_FILE dialects/PDLOps.td
+  SOURCES
+    dialects/pdl.py
+    dialects/_pdl_ops_ext.py
+    _mlir_libs/_mlir/dialects/pdl.pyi
+  DIALECT_NAME pdl)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT MLIRPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
   TD_FILE dialects/SCFOps.td
   SOURCES
     dialects/scf.py
@@ -137,15 +190,6 @@ declare_mlir_dialect_python_bindings(
   TD_FILE dialects/SparseTensorOps.td
   SOURCES dialects/sparse_tensor.py
   DIALECT_NAME sparse_tensor)
-
-declare_mlir_dialect_python_bindings(
-  ADD_TO_PARENT MLIRPythonSources.Dialects
-  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
-  TD_FILE dialects/StandardOps.td
-  SOURCES
-    dialects/std.py
-    dialects/_std_ops_ext.py
-  DIALECT_NAME std)
 
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT MLIRPythonSources.Dialects
@@ -182,8 +226,6 @@ declare_mlir_python_extension(MLIRPythonExtension.Core
   ADD_TO_PARENT MLIRPythonSources.Core
   ROOT_DIR "${PYTHON_SOURCE_DIR}"
   SOURCES
-    DialectLinalg.cpp  # TODO: Break this out.
-    DialectSparseTensor.cpp  # TODO: Break this out.
     MainModule.cpp
     IRAffine.cpp
     IRAttributes.cpp
@@ -195,7 +237,6 @@ declare_mlir_python_extension(MLIRPythonExtension.Core
     Pass.cpp
 
     # Headers must be included explicitly so they are installed.
-    Dialects.h
     Globals.h
     IRModule.h
     Pass.h
@@ -209,9 +250,59 @@ declare_mlir_python_extension(MLIRPythonExtension.Core
     MLIRCAPIRegistration  # TODO: See about dis-aggregating
 
     # Dialects
-    MLIRCAPILinalg  # TODO: Remove when above is removed.
-    MLIRCAPISparseTensor  # TODO: Remove when above is removed.
-    MLIRCAPIStandard
+    MLIRCAPIFunc
+)
+
+declare_mlir_python_extension(MLIRPythonExtension.Dialects.Linalg.Pybind
+  MODULE_NAME _mlirDialectsLinalg
+  ADD_TO_PARENT MLIRPythonSources.Dialects.linalg
+  ROOT_DIR "${PYTHON_SOURCE_DIR}"
+  SOURCES
+    DialectLinalg.cpp
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+  EMBED_CAPI_LINK_LIBS
+    MLIRCAPIIR
+    MLIRCAPILinalg
+)
+
+declare_mlir_python_extension(MLIRPythonExtension.Dialects.Quant.Pybind
+  MODULE_NAME _mlirDialectsQuant
+  ADD_TO_PARENT MLIRPythonSources.Dialects.quant
+  ROOT_DIR "${PYTHON_SOURCE_DIR}"
+  SOURCES
+    DialectQuant.cpp
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+  EMBED_CAPI_LINK_LIBS
+    MLIRCAPIIR
+    MLIRCAPIQuant
+)
+
+declare_mlir_python_extension(MLIRPythonExtension.Dialects.PDL.Pybind
+  MODULE_NAME _mlirDialectsPDL
+  ADD_TO_PARENT MLIRPythonSources.Dialects.pdl
+  ROOT_DIR "${PYTHON_SOURCE_DIR}"
+  SOURCES
+    DialectPDL.cpp
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+  EMBED_CAPI_LINK_LIBS
+    MLIRCAPIIR
+    MLIRCAPIPDL
+)
+
+declare_mlir_python_extension(MLIRPythonExtension.Dialects.SparseTensor.Pybind
+  MODULE_NAME _mlirDialectsSparseTensor
+  ADD_TO_PARENT MLIRPythonSources.Dialects.sparse_tensor
+  ROOT_DIR "${PYTHON_SOURCE_DIR}"
+  SOURCES
+    DialectSparseTensor.cpp
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+  EMBED_CAPI_LINK_LIBS
+    MLIRCAPIIR
+    MLIRCAPISparseTensor
 )
 
 declare_mlir_python_extension(MLIRPythonExtension.AllPassesRegistration
@@ -250,17 +341,20 @@ declare_mlir_python_extension(MLIRPythonExtension.Conversions
   MLIRCAPIConversion
 )
 
-declare_mlir_python_extension(MLIRPythonExtension.ExecutionEngine
-  MODULE_NAME _mlirExecutionEngine
-  ADD_TO_PARENT MLIRPythonSources.ExecutionEngine
-  ROOT_DIR "${PYTHON_SOURCE_DIR}"
-  SOURCES
-    ExecutionEngineModule.cpp
-  PRIVATE_LINK_LIBS
-    LLVMSupport
-  EMBED_CAPI_LINK_LIBS
-    MLIRCAPIExecutionEngine
-)
+# Only enable the ExecutionEngine if the native target is configured in.
+if(TARGET ${LLVM_NATIVE_ARCH})
+  declare_mlir_python_extension(MLIRPythonExtension.ExecutionEngine
+    MODULE_NAME _mlirExecutionEngine
+    ADD_TO_PARENT MLIRPythonSources.ExecutionEngine
+    ROOT_DIR "${PYTHON_SOURCE_DIR}"
+    SOURCES
+      ExecutionEngineModule.cpp
+    PRIVATE_LINK_LIBS
+      LLVMSupport
+    EMBED_CAPI_LINK_LIBS
+      MLIRCAPIExecutionEngine
+  )
+endif()
 
 declare_mlir_python_extension(MLIRPythonExtension.GPUDialectPasses
   MODULE_NAME _mlirGPUPasses

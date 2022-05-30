@@ -2523,7 +2523,7 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, OpaqueValueExpr>
 /// Matches a C++ static_assert declaration.
 ///
 /// Example:
-///   staticAssertExpr()
+///   staticAssertDecl()
 /// matches
 ///   static_assert(sizeof(S) == sizeof(int))
 /// in
@@ -3725,9 +3725,8 @@ AST_MATCHER_P(ObjCMessageExpr, hasReceiver, internal::Matcher<Expr>,
 /// \endcode
 AST_MATCHER_P(ObjCMessageExpr, hasSelector, std::string, BaseName) {
   Selector Sel = Node.getSelector();
-  return BaseName.compare(Sel.getAsString()) == 0;
+  return BaseName == Sel.getAsString();
 }
-
 
 /// Matches when at least one of the supplied string equals to the
 /// Selector.getAsString()
@@ -4128,25 +4127,34 @@ AST_MATCHER_P(DeclRefExpr, to, internal::Matcher<Decl>,
           InnerMatcher.matches(*DeclNode, Finder, Builder));
 }
 
-/// Matches a \c DeclRefExpr that refers to a declaration through a
-/// specific using shadow declaration.
+/// Matches if a node refers to a declaration through a specific
+/// using shadow declaration.
 ///
-/// Given
+/// Examples:
 /// \code
-///   namespace a { void f() {} }
+///   namespace a { int f(); }
 ///   using a::f;
-///   void g() {
-///     f();     // Matches this ..
-///     a::f();  // .. but not this.
-///   }
+///   int x = f();
 /// \endcode
 /// declRefExpr(throughUsingDecl(anything()))
-///   matches \c f()
-AST_MATCHER_P(DeclRefExpr, throughUsingDecl,
-              internal::Matcher<UsingShadowDecl>, InnerMatcher) {
+///   matches \c f
+///
+/// \code
+///   namespace a { class X{}; }
+///   using a::X;
+///   X x;
+/// \code
+/// typeLoc(loc(usingType(throughUsingDecl(anything()))))
+///   matches \c X
+///
+/// Usable as: Matcher<DeclRefExpr>, Matcher<UsingType>
+AST_POLYMORPHIC_MATCHER_P(throughUsingDecl,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(DeclRefExpr,
+                                                          UsingType),
+                          internal::Matcher<UsingShadowDecl>, Inner) {
   const NamedDecl *FoundDecl = Node.getFoundDecl();
   if (const UsingShadowDecl *UsingDecl = dyn_cast<UsingShadowDecl>(FoundDecl))
-    return InnerMatcher.matches(*UsingDecl, Finder, Builder);
+    return Inner.matches(*UsingDecl, Finder, Builder);
   return false;
 }
 
@@ -5003,6 +5011,49 @@ AST_POLYMORPHIC_MATCHER_P(parameterCountIs,
   return Node.getNumParams() == N;
 }
 
+/// Matches classTemplateSpecialization, templateSpecializationType and
+/// functionDecl nodes where the template argument matches the inner matcher.
+/// This matcher may produce multiple matches.
+///
+/// Given
+/// \code
+///   template <typename T, unsigned N, unsigned M>
+///   struct Matrix {};
+///
+///   constexpr unsigned R = 2;
+///   Matrix<int, R * 2, R * 4> M;
+///
+///   template <typename T, typename U>
+///   void f(T&& t, U&& u) {}
+///
+///   bool B = false;
+///   f(R, B);
+/// \endcode
+/// templateSpecializationType(forEachTemplateArgument(isExpr(expr())))
+///   matches twice, with expr() matching 'R * 2' and 'R * 4'
+/// functionDecl(forEachTemplateArgument(refersToType(builtinType())))
+///   matches the specialization f<unsigned, bool> twice, for 'unsigned'
+///   and 'bool'
+AST_POLYMORPHIC_MATCHER_P(
+    forEachTemplateArgument,
+    AST_POLYMORPHIC_SUPPORTED_TYPES(ClassTemplateSpecializationDecl,
+                                    TemplateSpecializationType, FunctionDecl),
+    clang::ast_matchers::internal::Matcher<TemplateArgument>, InnerMatcher) {
+  ArrayRef<TemplateArgument> TemplateArgs =
+      clang::ast_matchers::internal::getTemplateSpecializationArgs(Node);
+  clang::ast_matchers::internal::BoundNodesTreeBuilder Result;
+  bool Matched = false;
+  for (const auto &Arg : TemplateArgs) {
+    clang::ast_matchers::internal::BoundNodesTreeBuilder ArgBuilder(*Builder);
+    if (InnerMatcher.matches(Arg, Finder, &ArgBuilder)) {
+      Matched = true;
+      Result.addMatch(ArgBuilder);
+    }
+  }
+  *Builder = std::move(Result);
+  return Matched;
+}
+
 /// Matches \c FunctionDecls that have a noreturn attribute.
 ///
 /// Given
@@ -5162,6 +5213,25 @@ AST_POLYMORPHIC_MATCHER(isNoThrow,
   return FnTy->isNothrow();
 }
 
+/// Matches consteval function declarations and if consteval/if ! consteval
+/// statements.
+///
+/// Given:
+/// \code
+///   consteval int a();
+///   void b() { if consteval {} }
+///   void c() { if ! consteval {} }
+///   void d() { if ! consteval {} else {} }
+/// \endcode
+/// functionDecl(isConsteval())
+///   matches the declaration of "int a()".
+/// ifStmt(isConsteval())
+///   matches the if statement in "void b()", "void c()", "void d()".
+AST_POLYMORPHIC_MATCHER(isConsteval,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl, IfStmt)) {
+  return Node.isConsteval();
+}
+
 /// Matches constexpr variable and function declarations,
 ///        and if constexpr.
 ///
@@ -5182,6 +5252,23 @@ AST_POLYMORPHIC_MATCHER(isConstexpr,
                                                         FunctionDecl,
                                                         IfStmt)) {
   return Node.isConstexpr();
+}
+
+/// Matches constinit variable declarations.
+///
+/// Given:
+/// \code
+///   constinit int foo = 42;
+///   constinit const char* bar = "bar";
+///   int baz = 42;
+///   [[clang::require_constant_initialization]] int xyz = 42;
+/// \endcode
+/// varDecl(isConstinit())
+///   matches the declaration of `foo` and `bar`, but not `baz` and `xyz`.
+AST_MATCHER(VarDecl, isConstinit) {
+  if (const auto *CIA = Node.getAttr<ConstInitAttr>())
+    return CIA->isConstinit();
+  return false;
 }
 
 /// Matches selection statements with initializer.
@@ -6843,7 +6930,7 @@ extern const AstTypeMatcher<DecltypeType> decltypeType;
 AST_TYPE_TRAVERSE_MATCHER(hasDeducedType, getDeducedType,
                           AST_POLYMORPHIC_SUPPORTED_TYPES(AutoType));
 
-/// Matches \c DecltypeType nodes to find out the underlying type.
+/// Matches \c DecltypeType or \c UsingType nodes to find the underlying type.
 ///
 /// Given
 /// \code
@@ -6853,9 +6940,10 @@ AST_TYPE_TRAVERSE_MATCHER(hasDeducedType, getDeducedType,
 /// decltypeType(hasUnderlyingType(isInteger()))
 ///   matches the type of "a"
 ///
-/// Usable as: Matcher<DecltypeType>
+/// Usable as: Matcher<DecltypeType>, Matcher<UsingType>
 AST_TYPE_TRAVERSE_MATCHER(hasUnderlyingType, getUnderlyingType,
-                          AST_POLYMORPHIC_SUPPORTED_TYPES(DecltypeType));
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(DecltypeType,
+                                                          UsingType));
 
 /// Matches \c FunctionType nodes.
 ///
@@ -7182,6 +7270,18 @@ AST_MATCHER_P(ElaboratedType, namesType, internal::Matcher<QualType>,
               InnerMatcher) {
   return InnerMatcher.matches(Node.getNamedType(), Finder, Builder);
 }
+
+/// Matches types specified through a using declaration.
+///
+/// Given
+/// \code
+///   namespace a { struct S {}; }
+///   using a::S;
+///   S s;
+/// \endcode
+///
+/// \c usingType() matches the type of the variable declaration of \c s.
+extern const AstTypeMatcher<UsingType> usingType;
 
 /// Matches types that represent the result of substituting a type for a
 /// template type parameter.
@@ -7616,7 +7716,7 @@ AST_MATCHER_P(FunctionDecl, hasExplicitSpecifier, internal::Matcher<Expr>,
   return InnerMatcher.matches(*ES.getExpr(), Finder, Builder);
 }
 
-/// Matches function and namespace declarations that are marked with
+/// Matches functions, variables and namespace declarations that are marked with
 /// the inline keyword.
 ///
 /// Given
@@ -7626,18 +7726,22 @@ AST_MATCHER_P(FunctionDecl, hasExplicitSpecifier, internal::Matcher<Expr>,
 ///   namespace n {
 ///   inline namespace m {}
 ///   }
+///   inline int Foo = 5;
 /// \endcode
 /// functionDecl(isInline()) will match ::f().
 /// namespaceDecl(isInline()) will match n::m.
-AST_POLYMORPHIC_MATCHER(isInline,
-                        AST_POLYMORPHIC_SUPPORTED_TYPES(NamespaceDecl,
-                                                        FunctionDecl)) {
+/// varDecl(isInline()) will match Foo;
+AST_POLYMORPHIC_MATCHER(isInline, AST_POLYMORPHIC_SUPPORTED_TYPES(NamespaceDecl,
+                                                                  FunctionDecl,
+                                                                  VarDecl)) {
   // This is required because the spelling of the function used to determine
   // whether inline is specified or not differs between the polymorphic types.
   if (const auto *FD = dyn_cast<FunctionDecl>(&Node))
     return FD->isInlineSpecified();
-  else if (const auto *NSD = dyn_cast<NamespaceDecl>(&Node))
+  if (const auto *NSD = dyn_cast<NamespaceDecl>(&Node))
     return NSD->isInline();
+  if (const auto *VD = dyn_cast<VarDecl>(&Node))
+    return VD->isInline();
   llvm_unreachable("Not a valid polymorphic type");
 }
 
@@ -7867,8 +7971,7 @@ AST_MATCHER_P(Stmt, forFunction, internal::Matcher<FunctionDecl>,
         return true;
       }
     } else {
-      for (const auto &Parent : Finder->getASTContext().getParents(CurNode))
-        Stack.push_back(Parent);
+      llvm::append_range(Stack, Finder->getASTContext().getParents(CurNode));
     }
   }
   return false;
@@ -7926,8 +8029,7 @@ AST_MATCHER_P(Stmt, forCallable, internal::Matcher<Decl>, InnerMatcher) {
         return true;
       }
     } else {
-      for (const auto &Parent : Finder->getASTContext().getParents(CurNode))
-        Stack.push_back(Parent);
+      llvm::append_range(Stack, Finder->getASTContext().getParents(CurNode));
     }
   }
   return false;
@@ -8201,12 +8303,13 @@ AST_MATCHER_P(OMPExecutableDirective, hasAnyClause,
 /// \code
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(private)
 ///   #pragma omp parallel default(firstprivate)
 ///   #pragma omp parallel
 /// \endcode
 ///
-/// ``ompDefaultClause()`` matches ``default(none)``, ``default(shared)``, and
-/// ``default(firstprivate)``
+/// ``ompDefaultClause()`` matches ``default(none)``, ``default(shared)``,
+/// `` default(private)`` and ``default(firstprivate)``
 extern const internal::VariadicDynCastAllOfMatcher<OMPClause, OMPDefaultClause>
     ompDefaultClause;
 
@@ -8218,6 +8321,7 @@ extern const internal::VariadicDynCastAllOfMatcher<OMPClause, OMPDefaultClause>
 ///   #pragma omp parallel
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(private)
 ///   #pragma omp parallel default(firstprivate)
 /// \endcode
 ///
@@ -8234,12 +8338,32 @@ AST_MATCHER(OMPDefaultClause, isNoneKind) {
 ///   #pragma omp parallel
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(private)
 ///   #pragma omp parallel default(firstprivate)
 /// \endcode
 ///
 /// ``ompDefaultClause(isSharedKind())`` matches only ``default(shared)``.
 AST_MATCHER(OMPDefaultClause, isSharedKind) {
   return Node.getDefaultKind() == llvm::omp::OMP_DEFAULT_shared;
+}
+
+/// Matches if the OpenMP ``default`` clause has ``private`` kind
+/// specified.
+///
+/// Given
+///
+/// \code
+///   #pragma omp parallel
+///   #pragma omp parallel default(none)
+///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(private)
+///   #pragma omp parallel default(firstprivate)
+/// \endcode
+///
+/// ``ompDefaultClause(isPrivateKind())`` matches only
+/// ``default(private)``.
+AST_MATCHER(OMPDefaultClause, isPrivateKind) {
+  return Node.getDefaultKind() == llvm::omp::OMP_DEFAULT_private;
 }
 
 /// Matches if the OpenMP ``default`` clause has ``firstprivate`` kind
@@ -8251,6 +8375,7 @@ AST_MATCHER(OMPDefaultClause, isSharedKind) {
 ///   #pragma omp parallel
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(private)
 ///   #pragma omp parallel default(firstprivate)
 /// \endcode
 ///

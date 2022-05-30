@@ -29,6 +29,7 @@
 #include "lldb/DataFormatters/VectorType.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Utility/ConstString.h"
+#include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/RegularExpression.h"
 
@@ -267,6 +268,41 @@ std::string CPlusPlusLanguage::MethodName::GetScopeQualifiedName() {
   return res;
 }
 
+bool CPlusPlusLanguage::MethodName::ContainsPath(llvm::StringRef path) {
+  if (!m_parsed)
+    Parse();
+  // If we can't parse the incoming name, then just check that it contains path.
+  if (m_parse_error)
+    return m_full.GetStringRef().contains(path);
+    
+  llvm::StringRef identifier;
+  llvm::StringRef context;
+  std::string path_str = path.str();
+  bool success 
+      = CPlusPlusLanguage::ExtractContextAndIdentifier(path_str.c_str(),
+                                                       context,
+                                                       identifier);
+  if (!success)
+    return m_full.GetStringRef().contains(path);
+
+  if (identifier != GetBasename())
+    return false;
+  // Incoming path only had an identifier, so we match.
+  if (context.empty())
+    return true;
+  // Incoming path has context but this method does not, no match.
+  if (m_context.empty())
+    return false;
+
+  llvm::StringRef haystack = m_context;
+  if (!haystack.consume_back(context))
+    return false;
+  if (haystack.empty() || !isalnum(haystack.back()))
+    return true;
+    
+  return false;
+}
+
 bool CPlusPlusLanguage::IsCPPMangledName(llvm::StringRef name) {
   // FIXME!! we should really run through all the known C++ Language plugins
   // and ask each one if this is a C++ mangled name
@@ -277,6 +313,12 @@ bool CPlusPlusLanguage::IsCPPMangledName(llvm::StringRef name) {
     return false;
 
   return true;
+}
+
+bool CPlusPlusLanguage::DemangledNameContainsPath(llvm::StringRef path, 
+                                                  ConstString demangled) const {
+  MethodName demangled_name(demangled);
+  return demangled_name.ContainsPath(path);
 }
 
 bool CPlusPlusLanguage::ExtractContextAndIdentifier(
@@ -337,7 +379,7 @@ protected:
   }
 
   ConstString substituteImpl(llvm::StringRef Mangled) {
-    Log *log = GetLogIfAllCategoriesSet(LIBLLDB_LOG_LANGUAGE);
+    Log *log = GetLog(LLDBLog::Language);
     if (this->parse() == nullptr) {
       LLDB_LOG(log, "Failed to substitute mangling in {0}", Mangled);
       return ConstString();
@@ -577,6 +619,51 @@ static void LoadLibCxxFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
                 ConstString("^std::__[[:alnum:]]+::basic_string<wchar_t, "
                             "std::__[[:alnum:]]+::char_traits<wchar_t>, "
                             "std::__[[:alnum:]]+::allocator<wchar_t> >$"),
+                stl_summary_flags, true);
+
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxStringViewSummaryProviderASCII,
+                "std::string_view summary provider",
+                ConstString("^std::__[[:alnum:]]+::string_view$"),
+                stl_summary_flags, true);
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxStringViewSummaryProviderASCII,
+                "std::string_view summary provider",
+                ConstString("^std::__[[:alnum:]]+::basic_string_view<char, "
+                            "std::__[[:alnum:]]+::char_traits<char> >$"),
+                stl_summary_flags, true);
+  AddCXXSummary(
+      cpp_category_sp,
+      lldb_private::formatters::LibcxxStringViewSummaryProviderASCII,
+      "std::string_view summary provider",
+      ConstString("^std::__[[:alnum:]]+::basic_string_view<unsigned char, "
+                  "std::__[[:alnum:]]+::char_traits<unsigned char> >$"),
+      stl_summary_flags, true);
+
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxStringViewSummaryProviderUTF16,
+                "std::u16string_view summary provider",
+                ConstString("^std::__[[:alnum:]]+::basic_string_view<char16_t, "
+                            "std::__[[:alnum:]]+::char_traits<char16_t> >$"),
+                stl_summary_flags, true);
+
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxStringViewSummaryProviderUTF32,
+                "std::u32string_view summary provider",
+                ConstString("^std::__[[:alnum:]]+::basic_string_view<char32_t, "
+                            "std::__[[:alnum:]]+::char_traits<char32_t> >$"),
+                stl_summary_flags, true);
+
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxWStringViewSummaryProvider,
+                "std::wstring_view summary provider",
+                ConstString("^std::__[[:alnum:]]+::wstring_view$"),
+                stl_summary_flags, true);
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxWStringViewSummaryProvider,
+                "std::wstring_view summary provider",
+                ConstString("^std::__[[:alnum:]]+::basic_string_view<wchar_t, "
+                            "std::__[[:alnum:]]+::char_traits<wchar_t> >$"),
                 stl_summary_flags, true);
 
   SyntheticChildren::Flags stl_synth_flags;

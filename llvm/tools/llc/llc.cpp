@@ -36,6 +36,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/MC/MCTargetOptionsCommandFlags.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Pass.h"
@@ -369,6 +370,7 @@ int main(int argc, char **argv) {
   initializeHardwareLoopsPass(*Registry);
   initializeTransformUtils(*Registry);
   initializeReplaceWithVeclibLegacyPass(*Registry);
+  initializeTLSVariableHoistLegacyPassPass(*Registry);
 
   // Initialize debugging passes.
   initializeScavengerTestPass(*Registry);
@@ -501,11 +503,22 @@ static int compileModule(char **argv, LLVMContext &Context) {
         TargetMachine::parseBinutilsVersion(BinutilsVersion);
     Options.DisableIntegratedAS = NoIntegratedAssembler;
     Options.MCOptions.ShowMCEncoding = ShowMCEncoding;
-    Options.MCOptions.MCUseDwarfDirectory = DwarfDirectory;
     Options.MCOptions.AsmVerbose = AsmVerbose;
     Options.MCOptions.PreserveAsmComments = PreserveComments;
     Options.MCOptions.IASSearchPaths = IncludeDirs;
     Options.MCOptions.SplitDwarfFile = SplitDwarfFile;
+    if (DwarfDirectory.getPosition()) {
+      Options.MCOptions.MCUseDwarfDirectory =
+          DwarfDirectory ? MCTargetOptions::EnableDwarfDirectory
+                         : MCTargetOptions::DisableDwarfDirectory;
+    } else {
+      // -dwarf-directory is not set explicitly. Some assemblers
+      // (e.g. GNU as or ptxas) do not support `.file directory'
+      // syntax prior to DWARFv5. Let the target decide the default
+      // value.
+      Options.MCOptions.MCUseDwarfDirectory =
+          MCTargetOptions::DefaultDwarfDirectory;
+    }
   };
 
   Optional<Reloc::Model> RM = codegen::getExplicitRelocModel();
@@ -604,6 +617,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   std::unique_ptr<ToolOutputFile> Out =
       GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]);
   if (!Out) return 1;
+
+  // Ensure the filename is passed down to CodeViewDebug.
+  Target->Options.ObjectFilenameForDebug = Out->outputFilename();
 
   std::unique_ptr<ToolOutputFile> DwoOut;
   if (!SplitDwarfOutputFile.empty()) {

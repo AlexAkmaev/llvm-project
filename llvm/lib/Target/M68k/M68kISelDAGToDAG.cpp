@@ -1,4 +1,4 @@
-//===- M68kISelDAGToDAG.cpp - M68k Dag to Dag Inst Selector -*- C++ -*-===//
+//===-- M68kISelDAGToDAG.cpp - M68k Dag to Dag Inst Selector ----*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -312,7 +312,7 @@ private:
 } // namespace
 
 bool M68kDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
-  Subtarget = &static_cast<const M68kSubtarget &>(MF.getSubtarget());
+  Subtarget = &MF.getSubtarget<M68kSubtarget>();
   return SelectionDAGISel::runOnMachineFunction(MF);
 }
 

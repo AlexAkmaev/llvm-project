@@ -15,10 +15,10 @@ class ConcurrentManyWatchpoints(ConcurrentEventsBase):
     @skipIf(
         oslist=["ios", "watchos", "tvos", "bridgeos", "macosx"],
         archs=['arm64', 'arm64e', 'arm64_32', 'arm'],
-        bugnumber="rdar://81811539")
+        bugnumber="rdar://93863107")
     @add_test_categories(["watchpoint"])
     @skipIfOutOfTreeDebugserver
     def test(self):
         """Test 100 watchpoints from 100 threads."""
-        self.build(dictionary=self.getBuildFlags())
+        self.build()
         self.do_thread_actions(num_watchpoint_threads=100)

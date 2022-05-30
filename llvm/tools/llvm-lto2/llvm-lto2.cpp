@@ -144,11 +144,6 @@ static cl::opt<bool>
                  cl::init(false), cl::Hidden);
 
 static cl::opt<bool>
-    UseNewPM("use-new-pm",
-             cl::desc("Run LTO passes using the new pass manager"),
-             cl::init(LLVM_ENABLE_NEW_PASS_MANAGER), cl::Hidden);
-
-static cl::opt<bool>
     DebugPassManager("debug-pass-manager", cl::init(false), cl::Hidden,
                      cl::desc("Print pass management debugging information"));
 
@@ -267,7 +262,6 @@ static int run(int argc, char **argv) {
   Conf.AAPipeline = AAPipeline;
 
   Conf.OptLevel = OptLevel - '0';
-  Conf.UseNewPM = UseNewPM;
   Conf.Freestanding = EnableFreestanding;
   for (auto &PluginFN : PassPlugins)
     Conf.PassPlugins.push_back(PluginFN);
@@ -378,7 +372,7 @@ static int run(int argc, char **argv) {
     std::error_code EC;
     auto S = std::make_unique<raw_fd_ostream>(Path, EC, sys::fs::OF_None);
     check(EC, Path);
-    return std::make_unique<CachedFileStream>(std::move(S));
+    return std::make_unique<CachedFileStream>(std::move(S), Path);
   };
 
   auto AddBuffer = [&](size_t Task, std::unique_ptr<MemoryBuffer> MB) {

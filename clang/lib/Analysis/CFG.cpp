@@ -441,8 +441,7 @@ reverse_children::reverse_children(Stmt *S) {
   }
 
   // Default case for all other statements.
-  for (Stmt *SubStmt : S->children())
-    childrenBuf.push_back(SubStmt);
+  llvm::append_range(childrenBuf, S->children());
 
   // This needs to be done *after* childrenBuf has been populated.
   children = childrenBuf;
@@ -531,9 +530,7 @@ class CFGBuilder {
 public:
   explicit CFGBuilder(ASTContext *astContext,
                       const CFG::BuildOptions &buildOpts)
-      : Context(astContext), cfg(new CFG()), // crew a new CFG
-        ConstructionContextMap(), BuildOpts(buildOpts) {}
-
+      : Context(astContext), cfg(new CFG()), BuildOpts(buildOpts) {}
 
   // buildCFG - Used by external clients to construct the CFG.
   std::unique_ptr<CFG> buildCFG(const Decl *D, Stmt *Statement);
@@ -1820,8 +1817,6 @@ void CFGBuilder::addScopesEnd(LocalScope::const_iterator B,
 
   for (VarDecl *VD : llvm::reverse(DeclsWithEndedScope))
     appendScopeEnd(Block, VD, S);
-
-  return;
 }
 
 /// addAutomaticObjDtors - Add to current block automatic objects destructors
@@ -2024,13 +2019,8 @@ LocalScope* CFGBuilder::addLocalScopeForVarDecl(VarDecl *VD,
     return Scope;
 
   // Check if variable is local.
-  switch (VD->getStorageClass()) {
-  case SC_None:
-  case SC_Auto:
-  case SC_Register:
-    break;
-  default: return Scope;
-  }
+  if (!VD->hasLocalStorage())
+    return Scope;
 
   if (BuildOpts.AddImplicitDtors) {
     if (!hasTrivialDestructor(VD) || BuildOpts.AddScopes) {
@@ -3147,8 +3137,19 @@ CFGBlock *CFGBuilder::VisitReturnStmt(Stmt *S) {
       return Visit(O, AddStmtChoice::AlwaysAdd, /*ExternallyDestructed=*/true);
     return Block;
   }
-  // co_return
-  return VisitChildren(S);
+
+  CoreturnStmt *CRS = cast<CoreturnStmt>(S);
+  auto *B = Block;
+  if (CFGBlock *R = Visit(CRS->getPromiseCall()))
+    B = R;
+
+  if (Expr *RV = CRS->getOperand())
+    if (RV->getType()->isVoidType() && !isa<InitListExpr>(RV))
+      // A non-initlist void expression.
+      if (CFGBlock *R = Visit(RV))
+        B = R;
+
+  return B;
 }
 
 CFGBlock *CFGBuilder::VisitSEHExceptStmt(SEHExceptStmt *ES) {
@@ -3356,7 +3357,7 @@ CFGBlock *CFGBuilder::VisitGCCAsmStmt(GCCAsmStmt *G, AddStmtChoice asc) {
   // Save "Succ" in BackpatchBlocks. In the backpatch processing, "Succ" is
   // used to avoid adding "Succ" again.
   BackpatchBlocks.push_back(JumpSource(Succ, ScopePos));
-  return Block;
+  return VisitChildren(G);
 }
 
 CFGBlock *CFGBuilder::VisitForStmt(ForStmt *F) {
@@ -5615,12 +5616,10 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
       if (Optional<CFGConstructor> CE = E.getAs<CFGConstructor>()) {
         print_construction_context(OS, Helper, CE->getConstructionContext());
       }
-      OS << ", " << CCE->getType().getAsString() << ")";
+      OS << ", " << CCE->getType() << ")";
     } else if (const CastExpr *CE = dyn_cast<CastExpr>(S)) {
-      OS << " (" << CE->getStmtClassName() << ", "
-         << CE->getCastKindName()
-         << ", " << CE->getType().getAsString()
-         << ")";
+      OS << " (" << CE->getStmtClassName() << ", " << CE->getCastKindName()
+         << ", " << CE->getType() << ")";
     }
 
     // Expressions need a newline.
@@ -6134,17 +6133,13 @@ Stmt *CFGBlock::getTerminatorCondition(bool StripParens) {
 // CFG Graphviz Visualization
 //===----------------------------------------------------------------------===//
 
-#ifndef NDEBUG
-static StmtPrinterHelper* GraphHelper;
-#endif
+static StmtPrinterHelper *GraphHelper;
 
 void CFG::viewCFG(const LangOptions &LO) const {
-#ifndef NDEBUG
   StmtPrinterHelper H(this, LO);
   GraphHelper = &H;
   llvm::ViewGraph(this,"CFG");
   GraphHelper = nullptr;
-#endif
 }
 
 namespace llvm {
@@ -6153,8 +6148,7 @@ template<>
 struct DOTGraphTraits<const CFG*> : public DefaultDOTGraphTraits {
   DOTGraphTraits(bool isSimple = false) : DefaultDOTGraphTraits(isSimple) {}
 
-  static std::string getNodeLabel(const CFGBlock *Node, const CFG* Graph) {
-#ifndef NDEBUG
+  static std::string getNodeLabel(const CFGBlock *Node, const CFG *Graph) {
     std::string OutSStr;
     llvm::raw_string_ostream Out(OutSStr);
     print_block(Out,Graph, *Node, *GraphHelper, false, false);
@@ -6170,9 +6164,6 @@ struct DOTGraphTraits<const CFG*> : public DefaultDOTGraphTraits {
       }
 
     return OutStr;
-#else
-    return {};
-#endif
   }
 };
 

@@ -212,6 +212,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Builtin:
     case Type::Complex:
     case Type::UnresolvedUsing:
+    case Type::Using:
     case Type::Typedef:
     case Type::TypeOfExpr:
     case Type::TypeOf:
@@ -234,6 +235,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Pipe:
     case Type::BitInt:
     case Type::DependentBitInt:
+    case Type::BTFTagAttributed:
       CanPrefixQualifiers = true;
       break;
 
@@ -279,8 +281,9 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Attributed: {
       // We still want to print the address_space before the type if it is an
       // address_space attribute.
-      const auto *AttrTy = cast<AttributedType>(T);
+      const auto *AttrTy = cast<AttributedType>(UnderlyingType);
       CanPrefixQualifiers = AttrTy->getAttrKind() == attr::AddressSpace;
+      break;
     }
   }
 
@@ -958,6 +961,12 @@ void TypePrinter::printFunctionAfter(const FunctionType::ExtInfo &Info,
     case CC_AArch64VectorCall:
       OS << "__attribute__((aarch64_vector_pcs))";
       break;
+    case CC_AArch64SVEPCS:
+      OS << "__attribute__((aarch64_sve_pcs))";
+      break;
+    case CC_AMDGPUKernelCall:
+      OS << "__attribute__((amdgpu_kernel))";
+      break;
     case CC_IntelOclBicc:
       OS << " __attribute__((intel_ocl_bicc))";
       break;
@@ -1045,6 +1054,21 @@ void TypePrinter::printUnresolvedUsingBefore(const UnresolvedUsingType *T,
 
 void TypePrinter::printUnresolvedUsingAfter(const UnresolvedUsingType *T,
                                             raw_ostream &OS) {}
+
+void TypePrinter::printUsingBefore(const UsingType *T, raw_ostream &OS) {
+  // After `namespace b { using a::X }`, is the type X within B a::X or b::X?
+  //
+  // - b::X is more formally correct given the UsingType model
+  // - b::X makes sense if "re-exporting" a symbol in a new namespace
+  // - a::X makes sense if "importing" a symbol for convenience
+  //
+  // The "importing" use seems much more common, so we print a::X.
+  // This could be a policy option, but the right choice seems to rest more
+  // with the intent of the code than the caller.
+  printTypeSpec(T->getFoundDecl()->getUnderlyingDecl(), OS);
+}
+
+void TypePrinter::printUsingAfter(const UsingType *T, raw_ostream &OS) {}
 
 void TypePrinter::printTypedefBefore(const TypedefType *T, raw_ostream &OS) {
   printTypeSpec(T->getDecl(), OS);
@@ -1402,7 +1426,8 @@ void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
     }
     OS << "auto";
   } else if (IdentifierInfo *Id = T->getIdentifier())
-    OS << Id->getName();
+    OS << (Policy.CleanUglifiedParameters ? Id->deuglifiedName()
+                                          : Id->getName());
   else
     OS << "type-parameter-" << T->getDepth() << '-' << T->getIndex();
 
@@ -1449,8 +1474,7 @@ void TypePrinter::printTemplateId(const TemplateSpecializationType *T,
     if (!Policy.SuppressScope)
       AppendScope(TD->getDeclContext(), OS, TD->getDeclName());
 
-    IdentifierInfo *II = TD->getIdentifier();
-    OS << II->getName();
+    OS << TD->getName();
   } else {
     T->getTemplateName().print(OS, Policy);
   }
@@ -1672,6 +1696,9 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
 #include "clang/Basic/AttrList.inc"
     llvm_unreachable("non-type attribute attached to type");
 
+  case attr::BTFTypeTag:
+    llvm_unreachable("BTFTypeTag attribute handled separately");
+
   case attr::OpenCLPrivateAddressSpace:
   case attr::OpenCLGlobalAddressSpace:
   case attr::OpenCLGlobalDeviceAddressSpace:
@@ -1729,6 +1756,8 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
    break;
   }
   case attr::AArch64VectorPcs: OS << "aarch64_vector_pcs"; break;
+  case attr::AArch64SVEPcs: OS << "aarch64_sve_pcs"; break;
+  case attr::AMDGPUKernelCall: OS << "amdgpu_kernel"; break;
   case attr::IntelOclBicc: OS << "inteloclbicc"; break;
   case attr::PreserveMost:
     OS << "preserve_most";
@@ -1746,11 +1775,19 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
   case attr::ArmMveStrictPolymorphism:
     OS << "__clang_arm_mve_strict_polymorphism";
     break;
-  case attr::BTFTypeTag:
-    OS << "btf_type_tag";
-    break;
   }
   OS << "))";
+}
+
+void TypePrinter::printBTFTagAttributedBefore(const BTFTagAttributedType *T,
+                                              raw_ostream &OS) {
+  printBefore(T->getWrappedType(), OS);
+  OS << " btf_type_tag(" << T->getAttr()->getBTFTypeTag() << ")";
+}
+
+void TypePrinter::printBTFTagAttributedAfter(const BTFTagAttributedType *T,
+                                             raw_ostream &OS) {
+  printAfter(T->getWrappedType(), OS);
 }
 
 void TypePrinter::printObjCInterfaceBefore(const ObjCInterfaceType *T,
@@ -2277,4 +2314,10 @@ void QualType::getAsStringInternal(const Type *ty, Qualifiers qs,
   TypePrinter(policy).print(ty, qs, StrOS, buffer);
   std::string str = std::string(StrOS.str());
   buffer.swap(str);
+}
+
+raw_ostream &clang::operator<<(raw_ostream &OS, QualType QT) {
+  SplitQualType S = QT.split();
+  TypePrinter(LangOptions()).print(S.Ty, S.Quals, OS, /*PlaceHolder=*/"");
+  return OS;
 }

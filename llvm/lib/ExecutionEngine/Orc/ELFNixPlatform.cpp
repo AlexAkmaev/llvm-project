@@ -58,7 +58,8 @@ public:
     auto &DSOHandleSection =
         G->createSection(".data.__dso_handle", jitlink::MemProt::Read);
     auto &DSOHandleBlock = G->createContentBlock(
-        DSOHandleSection, getDSOHandleContent(PointerSize), 0, 8, 0);
+        DSOHandleSection, getDSOHandleContent(PointerSize), orc::ExecutorAddr(),
+        8, 0);
     auto &DSOHandleSymbol = G->addDefinedSymbol(
         DSOHandleBlock, 0, *R->getInitializerSymbol(), DSOHandleBlock.getSize(),
         jitlink::Linkage::Strong, jitlink::Scope::Default, false, true);
@@ -116,8 +117,12 @@ ELFNixPlatform::Create(ExecutionSession &ES,
                                    inconvertibleErrorCode());
 
   // Create default aliases if the caller didn't supply any.
-  if (!RuntimeAliases)
-    RuntimeAliases = standardPlatformAliases(ES);
+  if (!RuntimeAliases) {
+    auto StandardRuntimeAliases = standardPlatformAliases(ES, PlatformJD);
+    if (!StandardRuntimeAliases)
+      return StandardRuntimeAliases.takeError();
+    RuntimeAliases = std::move(*StandardRuntimeAliases);
+  }
 
   // Define the aliases.
   if (auto Err = PlatformJD.define(symbolAliases(std::move(*RuntimeAliases))))
@@ -154,6 +159,10 @@ Error ELFNixPlatform::setupJITDylib(JITDylib &JD) {
       std::make_unique<DSOHandleMaterializationUnit>(*this, DSOHandleSymbol));
 }
 
+Error ELFNixPlatform::teardownJITDylib(JITDylib &JD) {
+  return Error::success();
+}
+
 Error ELFNixPlatform::notifyAdding(ResourceTracker &RT,
                                    const MaterializationUnit &MU) {
   auto &JD = RT.getJITDylib();
@@ -184,10 +193,53 @@ static void addAliases(ExecutionSession &ES, SymbolAliasMap &Aliases,
   }
 }
 
-SymbolAliasMap ELFNixPlatform::standardPlatformAliases(ExecutionSession &ES) {
+Expected<SymbolAliasMap>
+ELFNixPlatform::standardPlatformAliases(ExecutionSession &ES,
+                                        JITDylib &PlatformJD) {
   SymbolAliasMap Aliases;
   addAliases(ES, Aliases, requiredCXXAliases());
   addAliases(ES, Aliases, standardRuntimeUtilityAliases());
+
+  // Determine whether or not the libunwind extended-API function for
+  // dynamically registering an entire .eh_frame section is available.
+  // If it is not, we assume that libgcc_s is being used, and alias to
+  // its __register_frame with the same functionality.
+  auto RTRegisterFrame = ES.intern("__orc_rt_register_eh_frame_section");
+  auto LibUnwindRegisterFrame = ES.intern("__unw_add_dynamic_eh_frame_section");
+  auto RTDeregisterFrame = ES.intern("__orc_rt_deregister_eh_frame_section");
+  auto LibUnwindDeregisterFrame =
+      ES.intern("__unw_remove_dynamic_eh_frame_section");
+  auto SM = ES.lookup(makeJITDylibSearchOrder(&PlatformJD),
+                      SymbolLookupSet()
+                          .add(LibUnwindRegisterFrame,
+                               SymbolLookupFlags::WeaklyReferencedSymbol)
+                          .add(LibUnwindDeregisterFrame,
+                               SymbolLookupFlags::WeaklyReferencedSymbol));
+  if (!SM) { // Weak-ref means no "missing symbol" errors, so this must be
+             // something more serious that we should report.
+    return SM.takeError();
+  } else if (SM->size() == 2) {
+    LLVM_DEBUG({
+      dbgs() << "Using libunwind " << LibUnwindRegisterFrame
+             << " for unwind info registration\n";
+    });
+    Aliases[std::move(RTRegisterFrame)] = {LibUnwindRegisterFrame,
+                                           JITSymbolFlags::Exported};
+    Aliases[std::move(RTDeregisterFrame)] = {LibUnwindDeregisterFrame,
+                                             JITSymbolFlags::Exported};
+  } else {
+    // Since LLVM libunwind is not present, we assume that unwinding
+    // is provided by libgcc
+    LLVM_DEBUG({
+      dbgs() << "Using libgcc __register_frame"
+             << " for unwind info registration\n";
+    });
+    Aliases[std::move(RTRegisterFrame)] = {ES.intern("__register_frame"),
+                                           JITSymbolFlags::Exported};
+    Aliases[std::move(RTDeregisterFrame)] = {ES.intern("__deregister_frame"),
+                                             JITSymbolFlags::Exported};
+  }
+
   return Aliases;
 }
 
@@ -315,9 +367,14 @@ void ELFNixPlatform::getInitializersLookupPhase(
     SendInitializerSequenceFn SendResult, JITDylib &JD) {
 
   auto DFSLinkOrder = JD.getDFSLinkOrder();
+  if (!DFSLinkOrder) {
+    SendResult(DFSLinkOrder.takeError());
+    return;
+  }
+
   DenseMap<JITDylib *, SymbolLookupSet> NewInitSymbols;
   ES.runSessionLocked([&]() {
-    for (auto &InitJD : DFSLinkOrder) {
+    for (auto &InitJD : *DFSLinkOrder) {
       auto RISItr = RegisteredInitSymbols.find(InitJD.get());
       if (RISItr != RegisteredInitSymbols.end()) {
         NewInitSymbols[InitJD.get()] = std::move(RISItr->second);
@@ -330,7 +387,7 @@ void ELFNixPlatform::getInitializersLookupPhase(
   // phase.
   if (NewInitSymbols.empty()) {
     getInitializersBuildSequencePhase(std::move(SendResult), JD,
-                                      std::move(DFSLinkOrder));
+                                      std::move(*DFSLinkOrder));
     return;
   }
 
@@ -375,7 +432,7 @@ void ELFNixPlatform::rt_getDeinitializers(
 
   {
     std::lock_guard<std::mutex> Lock(PlatformMutex);
-    auto I = HandleAddrToJITDylib.find(Handle.getValue());
+    auto I = HandleAddrToJITDylib.find(Handle);
     if (I != HandleAddrToJITDylib.end())
       JD = I->second;
   }
@@ -406,7 +463,7 @@ void ELFNixPlatform::rt_lookupSymbol(SendSymbolAddressFn SendResult,
 
   {
     std::lock_guard<std::mutex> Lock(PlatformMutex);
-    auto I = HandleAddrToJITDylib.find(Handle.getValue());
+    auto I = HandleAddrToJITDylib.find(Handle);
     if (I != HandleAddrToJITDylib.end())
       JD = I->second;
   }
@@ -630,12 +687,11 @@ void ELFNixPlatform::ELFNixPlatformPlugin::addDSOHandleSupportPasses(
     assert(I != G.defined_symbols().end() && "Missing DSO handle symbol");
     {
       std::lock_guard<std::mutex> Lock(MP.PlatformMutex);
-      JITTargetAddress HandleAddr = (*I)->getAddress();
+      auto HandleAddr = (*I)->getAddress();
       MP.HandleAddrToJITDylib[HandleAddr] = &JD;
       assert(!MP.InitSeqs.count(&JD) && "InitSeq entry for JD already exists");
       MP.InitSeqs.insert(std::make_pair(
-          &JD,
-          ELFNixJITDylibInitializers(JD.getName(), ExecutorAddr(HandleAddr))));
+          &JD, ELFNixJITDylibInitializers(JD.getName(), HandleAddr)));
     }
     return Error::success();
   });
