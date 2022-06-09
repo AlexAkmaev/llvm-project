@@ -18,7 +18,6 @@ enum CondCodes {
 
 CondCodes getOppositeBranchCondition(CondCodes);
 
-// TODO: do u need BRCondCode custom enum?
 enum BRCondCode {
   BREQ = 0x0,
 };

@@ -33,35 +33,26 @@ static cl::opt<bool>
 ReserveAppRegisters("Sim-reserve-app-registers", cl::Hidden, cl::init(false),
                     cl::desc("Reserve application registers (%g2-%g4)"));
 
-// RA == R0
-// RA changed to R1 for compatibility with emulator
 SimRegisterInfo::SimRegisterInfo() : SimGenRegisterInfo(SIM::R1) {}
 
-const MCPhysReg*
-SimRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
+const MCPhysReg* SimRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return CSR_Sim_SaveList;
 }
 
-const uint32_t *
-SimRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
-                                        CallingConv::ID CC) const {
+const uint32_t *SimRegisterInfo::getCallPreservedMask(const MachineFunction &MF, CallingConv::ID CC) const {
   return CSR_Sim_RegMask;
 }
 
-const uint32_t*
-SimRegisterInfo::getRTCallPreservedMask(CallingConv::ID CC) const {
+const uint32_t *SimRegisterInfo::getRTCallPreservedMask(CallingConv::ID CC) const {
   return CSR_Sim_RegMask;
 }
 
 BitVector SimRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
-
-  // TODO: choose regs
   Reserved.set(SIM::R0);
   Reserved.set(SIM::R1);
   Reserved.set(SIM::R2);
   Reserved.set(SIM::R3);
-
   return Reserved;
 }
 
@@ -70,12 +61,9 @@ Register SimRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   return TFI->hasFP(MF) ? SIM::FP : SIM::SP;
 }
 
-void
-SimRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
-                                     int SPAdj, unsigned FIOperandNum,
-                                     RegScavenger *RS) const {
+void SimRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj, unsigned FIOperandNum,
+                                          RegScavenger *RS) const {
   assert(SPAdj == 0 && "Unexpected");
-
   MachineInstr &MI = *II;
   DebugLoc dl = MI.getDebugLoc();
   int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
@@ -85,9 +73,7 @@ SimRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   Register FrameReg;
   int Offset;
   Offset = TFI->getFrameIndexReference(MF, FrameIndex, FrameReg).getFixed();
-
   Offset += MI.getOperand(FIOperandNum + 1).getImm();
-
   assert(isInt<16>(Offset) && "must fit immediate size");
 
   MI.getOperand(FIOperandNum).ChangeToRegister(FrameReg, false, false, false);

@@ -1,13 +1,13 @@
 add_llvm_component_library(LLVMSimDesc
-  SimMCTargetDesc.cpp
-  SimInstPrinter.cpp
-  SimMCAsmInfo.cpp
+    SimInstPrinter.cpp
+    SimMCTargetDesc.cpp
+    SimMCAsmInfo.cpp
 
-  LINK_COMPONENTS
-  MC
-  SimInfo
-  Support
+    LINK_COMPONENTS
+    MC
+    SimInfo
+    Support
 
-  ADD_TO_COMPONENT
-  Sim
-  )
+    ADD_TO_COMPONENT
+    Sim
+)

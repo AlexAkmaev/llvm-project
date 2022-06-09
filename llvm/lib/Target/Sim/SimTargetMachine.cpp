@@ -66,24 +66,21 @@ static CodeModel::Model getEffectiveSimCodeModel() {
   return CodeModel::Small;
 }
 
-SimTargetMachine::SimTargetMachine(
-    const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
-    const TargetOptions &Options, Optional<Reloc::Model> RM,
-    Optional<CodeModel::Model> CM, CodeGenOpt::Level OL, bool JIT)
+SimTargetMachine::SimTargetMachine( const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
+                                    const TargetOptions &Options, Optional<Reloc::Model> RM,
+                                    Optional<CodeModel::Model> CM, CodeGenOpt::Level OL, bool JIT)
     : LLVMTargetMachine(T, computeDataLayout(), TT, CPU, FS, Options,
                         getEffectiveSimRelocModel(RM),
-                        getEffectiveSimCodeModel(),
-                        OL),
-      TLOF(std::make_unique<SimTargetObjectFile>()),
-      Subtarget(TT, std::string(CPU), std::string(FS), *this) {
+                        getEffectiveSimCodeModel(), OL),
+      tlof_(std::make_unique<SimTargetObjectFile>()), subtarget_(TT, std::string(CPU), std::string(FS), *this) {
   initAsmInfo();
 }
 
 namespace {
+
 class SimPassConfig : public TargetPassConfig {
 public:
-  SimPassConfig(SimTargetMachine &TM, PassManagerBase &PM)
-      : TargetPassConfig(TM, PM) {}
+  SimPassConfig(SimTargetMachine &TM, PassManagerBase &PM) : TargetPassConfig(TM, PM) {}
 
   SimTargetMachine &getSimTargetMachine() const {
     return getTM<SimTargetMachine>();

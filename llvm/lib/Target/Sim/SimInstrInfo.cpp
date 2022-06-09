@@ -110,8 +110,6 @@ bool SimInstrInfo::verifyInstruction(const MachineInstr &MI,
 static SimCC::CondCodes GetOppositeBranchCondition(SimCC::CondCodes CC)
 {
   switch(CC) {
-  default:
-    llvm_unreachable("Unrecognized conditional branch");
   case SimCC::EQ:
     return SimCC::NE;
   case SimCC::NE:
@@ -124,8 +122,9 @@ static SimCC::CondCodes GetOppositeBranchCondition(SimCC::CondCodes CC)
      return SimCC::GT;
   case SimCC::GE:
     return SimCC::LT;
+  default:
+    llvm_unreachable("Unrecognized conditional branch");
   }
-  llvm_unreachable("Invalid cond code");
 }
 
 static bool isUncondBranchOpcode(int Opc) {
@@ -142,50 +141,38 @@ static bool isIndirectBranchOpcode(int Opc) {
 
 const MCInstrDesc &SimInstrInfo::getBranchFromCond(SimCC::CondCodes CC) const {
   switch (CC) {
-  default:
-    llvm_unreachable("Unknown condition code!");
-  case SimCC::EQ:
-    return get(SIM::BEQ);
-  case SimCC::NE:
-    return get(SIM::BNE);
-  case SimCC::LE:
-    return get(SIM::BLE);
-  case SimCC::GT:
-    return get(SIM::BGT);
-  // TODO: either add LEU/GTU conditions or delete it
-  // case USimCC::LEU:
-  //   return get(USim::BLEU);
-  // case USimCC::GTU:
-  //   return get(USim::BGTU);
+    case SimCC::EQ:
+      return get(SIM::BEQ);
+    case SimCC::NE:
+      return get(SIM::BNE);
+    case SimCC::LE:
+      return get(SIM::BLE);
+    case SimCC::GT:
+      return get(SIM::BGT);
+    default:
+      llvm_unreachable("Unknown condition code!");
   }
-  llvm_unreachable("");
 }
 
 static SimCC::CondCodes getCondFromBranchOpcode(unsigned Opc) {
   switch (Opc) {
-  default:
-    return SimCC::INVALID;
-  case SIM::BEQ:
-    return SimCC::EQ;
-  case SIM::BNE:
-    return SimCC::NE;
-  case SIM::BLE:
-    return SimCC::LE;
-  case SIM::BGT:
-    return SimCC::GT;
-  // TODO: either add LEU/GTU conditions or delete it
-  // case Sim::BLEU:
-  //   return SimCC::LEU;
-  // case Sim::BGTU:
-  //   return SimCC::GTU;
+    case SIM::BEQ:
+      return SimCC::EQ;
+    case SIM::BNE:
+      return SimCC::NE;
+    case SIM::BLE:
+      return SimCC::LE;
+    case SIM::BGT:
+      return SimCC::GT;
+    default:
+      return SimCC::INVALID;
   }
-  llvm_unreachable("");
 }
 
-static void parseCondBranch(MachineInstr *LastInst, MachineBasicBlock *&Target,
-                            SmallVectorImpl<MachineOperand> &Cond) {
-  assert(LastInst->getDesc().isConditionalBranch() &&
-         "Unknown conditional branch");
+static void parseCondBranch(MachineInstr *LastInst, MachineBasicBlock *&Target, SmallVectorImpl<MachineOperand> &Cond) {
+  if (!LastInst->getDesc().isConditionalBranch()) {
+    llvm_unreachable("Unknown conditional branch");
+  }
   Target = LastInst->getOperand(2).getMBB();
   unsigned CC = getCondFromBranchOpcode(LastInst->getOpcode());
   Cond.push_back(MachineOperand::CreateImm(CC));
@@ -193,11 +180,8 @@ static void parseCondBranch(MachineInstr *LastInst, MachineBasicBlock *&Target,
   Cond.push_back(LastInst->getOperand(1));
 }
 
-bool SimInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
-                                   MachineBasicBlock *&TBB,
-                                   MachineBasicBlock *&FBB,
-                                   SmallVectorImpl<MachineOperand> &Cond,
-                                   bool AllowModify) const {
+bool SimInstrInfo::analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB, MachineBasicBlock *&FBB,
+                                 SmallVectorImpl<MachineOperand> &Cond, bool AllowModify) const {
   MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
   if (I == MBB.end())
     return false;
@@ -276,16 +260,19 @@ bool SimInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
   return true;
 }
 
-unsigned SimInstrInfo::insertBranch(MachineBasicBlock &MBB,
-                                      MachineBasicBlock *TBB,
-                                      MachineBasicBlock *FBB,
-                                      ArrayRef<MachineOperand> Cond,
-                                      const DebugLoc &DL,
-                                      int *BytesAdded) const {
-  assert(TBB && "insertBranch must not be told to insert a fallthrough");
-  assert((Cond.size() == 3 || Cond.size() == 0) &&
-         "Sim branch conditions should have one component!");
-  assert(!BytesAdded && "code size not handled");
+unsigned SimInstrInfo::insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB, MachineBasicBlock *FBB,
+                                    ArrayRef<MachineOperand> Cond, const DebugLoc &DL, int *BytesAdded) const {
+  if (!TBB) {
+    llvm_unreachable("insertBranch must not be told to insert a fallthrough");
+  }
+
+  if (!(Cond.size() == 3 || Cond.size() == 0)) {
+    llvm_unreachable("Sim branch conditions should have one component!");
+  }
+
+  if (BytesAdded) {
+    llvm_unreachable("code size not handled");
+  }
 
   if (Cond.empty()) {
     assert(!FBB && "Unconditional branch with multiple successors!");
@@ -295,10 +282,7 @@ unsigned SimInstrInfo::insertBranch(MachineBasicBlock &MBB,
 
   // Conditional branch
   auto CC = static_cast<SimCC::CondCodes>(Cond[0].getImm());
-  BuildMI(&MBB, DL, getBranchFromCond(CC))
-    .addReg(Cond[1].getReg())
-    .addReg(Cond[2].getReg())
-    .addMBB(TBB);
+  BuildMI(&MBB, DL, getBranchFromCond(CC)).addReg(Cond[1].getReg()).addReg(Cond[2].getReg()).addMBB(TBB);
   if (!FBB) {
     return 1;
   }
@@ -307,8 +291,7 @@ unsigned SimInstrInfo::insertBranch(MachineBasicBlock &MBB,
   return 2;
 }
 
-unsigned SimInstrInfo::removeBranch(MachineBasicBlock &MBB,
-                                      int *BytesRemoved) const {
+unsigned SimInstrInfo::removeBranch(MachineBasicBlock &MBB, int *BytesRemoved) const {
   assert(!BytesRemoved && "code size not handled");
 
   MachineBasicBlock::iterator I = MBB.end();
@@ -330,18 +313,15 @@ unsigned SimInstrInfo::removeBranch(MachineBasicBlock &MBB,
   return Count;
 }
 
-bool SimInstrInfo::reverseBranchCondition(
-    SmallVectorImpl<MachineOperand> &Cond) const {
+bool SimInstrInfo::reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
   assert(Cond.size() == 1 || Cond.size() == 3);
   SimCC::CondCodes CC = static_cast<SimCC::CondCodes>(Cond[0].getImm());
   Cond[0].setImm(GetOppositeBranchCondition(CC));
   return false;
 }
 
-void SimInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
-                                 MachineBasicBlock::iterator I,
-                                 const DebugLoc &DL, MCRegister DestReg,
-                                 MCRegister SrcReg, bool KillSrc) const {
+void SimInstrInfo::copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+                               const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg, bool KillSrc) const {
   if (SIM::GPRRegClass.contains(DestReg, SrcReg)) {
     BuildMI(MBB, I, DL, get(SIM::ADDi), DestReg)
         .addReg(SrcReg, getKillRegState(KillSrc))
@@ -351,11 +331,9 @@ void SimInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   llvm_unreachable("");
 }
 
-void SimInstrInfo::
-storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                    Register SrcReg, bool isKill, int FI,
-                    const TargetRegisterClass *RC,
-                    const TargetRegisterInfo *TRI) const {
+void SimInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+                                       Register SrcReg, bool isKill, int FI,
+                                       const TargetRegisterClass *RC, const TargetRegisterInfo *TRI) const {
   DebugLoc DL;
   if (I != MBB.end())
     DL = I->getDebugLoc();
@@ -375,11 +353,8 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
       .addMemOperand(MMO);
 }
 
-void SimInstrInfo::
-loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                     Register DestReg, int FI,
-                     const TargetRegisterClass *RC,
-                     const TargetRegisterInfo *TRI) const {
+void SimInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, Register DestReg,
+                                        int FI, const TargetRegisterClass *RC, const TargetRegisterInfo *TRI) const {
   DebugLoc DL;
   if (I != MBB.end())
     DL = I->getDebugLoc();

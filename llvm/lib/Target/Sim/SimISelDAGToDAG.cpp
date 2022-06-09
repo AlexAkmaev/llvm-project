@@ -28,13 +28,13 @@ using namespace llvm;
 //===----------------------------------------------------------------------===//
 
 //===--------------------------------------------------------------------===//
-/// SimDAGToDAGISel - Sim specific code to select Sim machine
-/// instructions for SelectionDAG operations.
-///
+// SimDAGToDAGISel - Sim specific code to select Sim machine
+// instructions for SelectionDAG operations.
+//
 namespace {
 class SimDAGToDAGISel : public SelectionDAGISel {
-  /// Subtarget - Keep a pointer to the Sim Subtarget around so that we can
-  /// make the right decision when generating code for different targets.
+  // Subtarget - Keep a pointer to the Sim Subtarget around so that we can
+  // make the right decision when generating code for different targets.
   const SimSubtarget *Subtarget = nullptr;
 
 public:
@@ -61,8 +61,7 @@ public:
 };
 }  // end anonymous namespace
 
-bool SimDAGToDAGISel::SelectADDRri(SDValue Addr,
-                                   SDValue &Base) {
+bool SimDAGToDAGISel::SelectADDRri(SDValue Addr, SDValue &Base) {
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
     Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i32);
     return true;
@@ -88,28 +87,22 @@ void SimDAGToDAGISel::Select(SDNode *N) {
     return;   // Already selected.
   }
 
-  auto Opcode = N->getOpcode();
+  uint Opcode = N->getOpcode();
   MVT VT = N->getSimpleValueType(0);
 
-  switch (Opcode) {
-  default:
-    break;
-  case ISD::FrameIndex: {
+  if (Opcode == ISD::FrameIndex) {
     SDValue Imm = CurDAG->getTargetConstant(0, dl, MVT::i32);
     int FI = cast<FrameIndexSDNode>(N)->getIndex();
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, VT);
     ReplaceNode(N, CurDAG->getMachineNode(SIM::ADDi, dl, VT, TFI, Imm));
     return;
   }
-  }
 
   SelectCode(N);
 }
 
-/// createSimISelDag - This pass converts a legalized DAG into a
-/// Sim-specific DAG, ready for instruction scheduling.
-///
-FunctionPass *llvm::createSimISelDag(SimTargetMachine &TM,
-                                     CodeGenOpt::Level OptLevel) {
+// createSimISelDag - This pass converts a legalized DAG into a
+// Sim-specific DAG, ready for instruction scheduling.
+FunctionPass *llvm::createSimISelDag(SimTargetMachine &TM, CodeGenOpt::Level OptLevel) {
   return new SimDAGToDAGISel(TM, OptLevel);
 }

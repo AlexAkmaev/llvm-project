@@ -39,9 +39,7 @@ using namespace llvm;
 #include "SimGenCallingConv.inc"
 #include "SimGenRegisterInfo.inc"
 
-
-static SDValue convertValVTToLocVT(SelectionDAG &DAG, SDValue Val,
-                                   const CCValAssign &VA, const SDLoc &DL) {
+static SDValue convertValVTToLocVT(SelectionDAG &DAG, SDValue Val, const CCValAssign &VA, const SDLoc &DL) {
   EVT LocVT = VA.getLocVT();
 
   if (VA.getValVT() == MVT::f32) {
@@ -68,21 +66,18 @@ static SDValue convertValVTToLocVT(SelectionDAG &DAG, SDValue Val,
   return Val;
 }
 
-SDValue
-SimTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
-                               bool IsVarArg,
-                               const SmallVectorImpl<ISD::OutputArg> &Outs,
-                               const SmallVectorImpl<SDValue> &OutVals,
-                               const SDLoc &DL, SelectionDAG &DAG) const {
-  assert(IsVarArg == false && "TBD");
+SDValue SimTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
+                                       const SmallVectorImpl<ISD::OutputArg> &Outs,
+                                       const SmallVectorImpl<SDValue> &OutVals,
+                                       const SDLoc &DL, SelectionDAG &DAG) const {
+  assert(!IsVarArg && "TBD");
   MachineFunction &MF = DAG.getMachineFunction();
 
   // CCValAssign - represent the assignment of the return value to locations.
   SmallVector<CCValAssign, 16> RVLocs;
 
   // CCState - Info about the registers and stack slot.
-  CCState CCInfo(CallConv, IsVarArg, MF, RVLocs,
-                 *DAG.getContext());
+  CCState CCInfo(CallConv, IsVarArg, MF, RVLocs,*DAG.getContext());
 
   // Analyze return values.
   CCInfo.AnalyzeReturn(Outs, RetCC_Sim);
@@ -121,10 +116,8 @@ SimTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 }
 
 
-bool SimTargetLowering::CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF,
-                                       bool IsVarArg,
-                                       const SmallVectorImpl<ISD::OutputArg> &Outs,
-                                       LLVMContext &Context) const {
+bool SimTargetLowering::CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF, bool IsVarArg,
+                                       const SmallVectorImpl<ISD::OutputArg> &Outs, LLVMContext &Context) const {
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, Context);
   if (!CCInfo.CheckReturn(Outs, RetCC_Sim)) {
@@ -136,10 +129,9 @@ bool SimTargetLowering::CanLowerReturn(CallingConv::ID CallConv, MachineFunction
   return true;
 }
 
-SDValue SimTargetLowering::LowerFormalArguments(
-    SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
-    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &dl,
-    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
+SDValue SimTargetLowering::LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
+                                                const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &dl,
+                                                SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
   MachineFunction &MF = DAG.getMachineFunction();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
   // SimMachineFunctionInfo *FuncInfo = MF.getInfo<SimMachineFunctionInfo>();
@@ -196,53 +188,12 @@ SDValue SimTargetLowering::LowerFormalArguments(
   // Store remaining ArgRegs to the stack if this is a varargs function.
   if (isVarArg) {
     llvm_unreachable("TBD: LowerFormalArguments for isVarArg");
-    // TODO: change regs?
-    // static const MCPhysReg ArgRegs[] = {
-    //   SIM::R10, SIM::R11, SIM::R12, SIM::R13, SIM::R14, SIM::R15
-    // };
-    // unsigned NumAllocated = CCInfo.getFirstUnallocated(ArgRegs);
-    // const MCPhysReg *CurArgReg = ArgRegs + NumAllocated;
-    // const MCPhysReg *ArgRegEnd = ArgRegs + 6;
-    // unsigned ArgOffset = CCInfo.getNextStackOffset();
-    // if (NumAllocated == 6) {
-    //   llvm_unreachable("");
-    //   ArgOffset += 0;
-    // } else {
-    //   assert(!ArgOffset);
-    //   ArgOffset = 68 + 4 * NumAllocated;
-    // }
-
-    // // Remember the vararg offset for the va_start implementation.
-    // FuncInfo->setVarArgsFrameOffset(ArgOffset);
-
-    // std::vector<SDValue> OutChains;
-
-    // for (; CurArgReg != ArgRegEnd; ++CurArgReg) {
-    //   Register VReg = RegInfo.createVirtualRegister(&SIM::GPRRegClass);
-    //   MF.getRegInfo().addLiveIn(*CurArgReg, VReg);
-    //   SDValue Arg = DAG.getCopyFromReg(DAG.getRoot(), dl, VReg, MVT::i32);
-
-    //   int FrameIdx = MF.getFrameInfo().CreateFixedObject(4, ArgOffset,
-    //                                                      true);
-    //   SDValue FIPtr = DAG.getFrameIndex(FrameIdx, MVT::i32);
-
-    //   OutChains.push_back(
-    //       DAG.getStore(DAG.getRoot(), dl, Arg, FIPtr, MachinePointerInfo()));
-    //   ArgOffset += 4;
-    // }
-
-    // if (!OutChains.empty()) {
-    //   OutChains.push_back(Chain);
-    //   Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, OutChains);
-    // }
   }
 
   return Chain;
 }
 
-SDValue
-SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
-                             SmallVectorImpl<SDValue> &InVals) const {
+SDValue SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI, SmallVectorImpl<SDValue> &InVals) const {
   SelectionDAG &DAG                     = CLI.DAG;
   SDLoc &dl                             = CLI.DL;
   SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
@@ -254,8 +205,6 @@ SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   CallingConv::ID CallConv              = CLI.CallConv;
   bool isVarArg                         = CLI.IsVarArg;
 
-  // Sim target does not yet support tail call optimization.
-  // TODO: implement it
   isTailCall = false;
 
   // Analyze operands of the call, assigning locations to each operand.
@@ -317,50 +266,6 @@ SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // For now, only handle fully promoted and indirect arguments.
     if (VA.getLocInfo() == CCValAssign::Indirect) {
       llvm_unreachable("unsupported Indirect calls");
-      // Store the argument in a stack slot and pass its address.
-    //   Align StackAlign =
-    //       std::max(getPrefTypeAlign(Outs[i].ArgVT, DAG),
-    //                getPrefTypeAlign(ArgValue.getValueType(), DAG));
-    //   TypeSize StoredSize = ArgValue.getValueType().getStoreSize();
-    //   // If the original argument was split (e.g. i128), we need
-    //   // to store the required parts of it here (and pass just one address).
-    //   // Vectors may be partly split to registers and partly to the stack, in
-    //   // which case the base address is partly offset and subsequent stores are
-    //   // relative to that.
-    //   unsigned ArgIndex = Outs[i].OrigArgIndex;
-    //   unsigned ArgPartOffset = Outs[i].PartOffset;
-    //   assert(VA.getValVT().isVector() || ArgPartOffset == 0);
-    //   // Calculate the total size to store. We don't have access to what we're
-    //   // actually storing other than performing the loop and collecting the
-    //   // info.
-    //   SmallVector<std::pair<SDValue, SDValue>> Parts;
-    //   while (i + 1 != e && Outs[i + 1].OrigArgIndex == ArgIndex) {
-    //     SDValue PartValue = OutVals[i + 1];
-    //     unsigned PartOffset = Outs[i + 1].PartOffset - ArgPartOffset;
-    //     SDValue Offset = DAG.getIntPtrConstant(PartOffset, DL);
-    //     EVT PartVT = PartValue.getValueType();
-    //     if (PartVT.isScalableVector())
-    //       Offset = DAG.getNode(ISD::VSCALE, DL, XLenVT, Offset);
-    //     StoredSize += PartVT.getStoreSize();
-    //     StackAlign = std::max(StackAlign, getPrefTypeAlign(PartVT, DAG));
-    //     Parts.push_back(std::make_pair(PartValue, Offset));
-    //     ++i;
-    //   }
-    //   SDValue SpillSlot = DAG.CreateStackTemporary(StoredSize, StackAlign);
-    //   int FI = cast<FrameIndexSDNode>(SpillSlot)->getIndex();
-    //   MemOpChains.push_back(
-    //       DAG.getStore(Chain, DL, ArgValue, SpillSlot,
-    //                    MachinePointerInfo::getFixedStack(MF, FI)));
-    //   for (const auto &Part : Parts) {
-    //     SDValue PartValue = Part.first;
-    //     SDValue PartOffset = Part.second;
-    //     SDValue Address =
-    //         DAG.getNode(ISD::ADD, DL, PtrVT, SpillSlot, PartOffset);
-    //     MemOpChains.push_back(
-    //         DAG.getStore(Chain, DL, PartValue, Address,
-    //                      MachinePointerInfo::getFixedStack(MF, FI)));
-    //   }
-    //   ArgValue = SpillSlot;
     } else {
       ArgValue = convertValVTToLocVT(DAG, ArgValue, VA, dl);
     }
@@ -381,15 +286,13 @@ SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       RegsToPass.push_back(std::make_pair(VA.getLocReg(), ArgValue));
     } else {
       assert(VA.isMemLoc() && "Argument not register or memory");
-      assert(!isTailCall && "Tail call not allowed if stack is used "
-                            "for passing parameters");
+      assert(!isTailCall && "Tail call not allowed if stack is used for passing parameters");
 
       // Create a store off the stack pointer for this argument.
       SDValue StackPtr = DAG.getRegister(SIM::SP, MVT::i32);
       SDValue PtrOff = DAG.getIntPtrConstant(VA.getLocMemOffset(), dl);
       PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
-      MemOpChains.push_back(
-          DAG.getStore(Chain, dl, ArgValue, PtrOff, MachinePointerInfo()));
+      MemOpChains.push_back(DAG.getStore(Chain, dl, ArgValue, PtrOff, MachinePointerInfo()));
     }
   }
 
@@ -470,13 +373,6 @@ SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
     if (VA.getLocVT() == MVT::i32 && VA.getValVT() == MVT::f64) {
       llvm_unreachable("");
-      // assert(VA.getLocReg() == ArgGPRs[0] && "Unexpected reg assignment");
-      // SDValue RetValue2 =
-      //     DAG.getCopyFromReg(Chain, DL, ArgGPRs[1], MVT::i32, Glue);
-      // Chain = RetValue2.getValue(1);
-      // Glue = RetValue2.getValue(2);
-      // RetValue = DAG.getNode(RISCVISD::BuildPairF64, DL, MVT::f64, RetValue,
-      //                        RetValue2);
     }
 
     RetValue = convertValVTToLocVT(DAG, RetValue, VA, dl);
@@ -488,8 +384,7 @@ SimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
 // FIXME? Maybe this could be a TableGen attribute on some registers and
 // this table could be generated automatically from RegInfo.
-Register SimTargetLowering::getRegisterByName(const char* RegName, LLT VT,
-                                                const MachineFunction &MF) const {
+Register SimTargetLowering::getRegisterByName(const char* RegName, LLT VT, const MachineFunction &MF) const {
   Register Reg = StringSwitch<Register>(RegName)
     .Case("r0", SIM::R0).Case("r1", SIM::R1).Case("r2", SIM::R2).Case("r3", SIM::R3)
     .Case("r4", SIM::R4).Case("r5", SIM::R5).Case("r6", SIM::R6).Case("r7", SIM::R7)
@@ -508,8 +403,7 @@ Register SimTargetLowering::getRegisterByName(const char* RegName, LLT VT,
 // TargetLowering Implementation
 //===----------------------------------------------------------------------===//
 
-SimTargetLowering::SimTargetLowering(const TargetMachine &TM,
-                                     const SimSubtarget &STI)
+SimTargetLowering::SimTargetLowering(const TargetMachine &TM, const SimSubtarget &STI)
     : TargetLowering(TM), Subtarget(&STI) {
 
   // Set up the register classes.
@@ -555,11 +449,6 @@ SimTargetLowering::SimTargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::SELECT, MVT::i32, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::i32, Custom);
-  // setTargetDAGCombine(ISD::BITCAST);
-
-  // setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
-
-  // setMinFunctionAlignment(Align(4));
 }
 
 const char *SimTargetLowering::getTargetNodeName(unsigned Opcode) const {
@@ -573,17 +462,14 @@ const char *SimTargetLowering::getTargetNodeName(unsigned Opcode) const {
   return nullptr;
 }
 
-EVT SimTargetLowering::getSetCCResultType(const DataLayout &, LLVMContext &,
-                                          EVT VT) const {
+EVT SimTargetLowering::getSetCCResultType(const DataLayout &, LLVMContext &, EVT VT) const {
   assert(!VT.isVector() && "can't support vector type");
   return MVT::i32;
 }
 
 // taken from RISCV
-bool SimTargetLowering::isLegalAddressingMode(const DataLayout &DL,
-                                              const AddrMode &AM, Type *Ty,
-                                              unsigned AS,
-                                              Instruction *I) const {
+bool SimTargetLowering::isLegalAddressingMode(const DataLayout &DL, const AddrMode &AM, Type *Ty,
+                                              unsigned AS, Instruction *I) const {
   // No global is ever allowed as a base.
   if (AM.BaseGV)
     return false;
@@ -606,8 +492,7 @@ bool SimTargetLowering::isLegalAddressingMode(const DataLayout &DL,
 }
 
 MachineBasicBlock *
-SimTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
-                                               MachineBasicBlock *BB) const {
+SimTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI, MachineBasicBlock *BB) const {
   switch (MI.getOpcode()) {
   default: llvm_unreachable("Unknown SELECT_CC!");
   case SIM::PseudoSELECT_CC:
@@ -713,8 +598,7 @@ SimTargetLowering::expandSelectCC(MachineInstr &MI, MachineBasicBlock *BB) const
   return SinkMBB;
 }
 
-static SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG,
-                              const SimSubtarget *Subtarget) {
+static SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG, const SimSubtarget *Subtarget) {
   const auto &RI = *Subtarget->getRegisterInfo();
   auto &MF = DAG.getMachineFunction();
   auto &MFI = MF.getFrameInfo();
@@ -727,8 +611,7 @@ static SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG,
   return FrameAddr;
 }
 
-static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS,
-                                    ISD::CondCode &CC, SelectionDAG &DAG) {
+static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS, ISD::CondCode &CC, SelectionDAG &DAG) {
   switch (CC) {
   default:
     break;
@@ -805,8 +688,7 @@ static SDValue LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) {
                      {LHS, RHS, TrueVal, FalseVal, TargetCC});
 }
 
-SDValue SimTargetLowering::
-LowerOperation(SDValue Op, SelectionDAG &DAG) const {
+SDValue SimTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   default: llvm_unreachable("Should not custom lower this!");
   case ISD::FRAMEADDR:          return LowerFRAMEADDR(Op, DAG,
@@ -818,12 +700,5 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue SimTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
-  // TODO: do smth smart
-  // switch (N->getOpcode()) {
-  // default:
-  //   break;
-  // case ISD::BITCAST:
-  //   return PerformBITCASTCombine(N, DCI);
-  // }
   return SDValue();
 }

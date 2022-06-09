@@ -17,6 +17,8 @@
 
 #include "MCTargetDesc/SimMCTargetDesc.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/Pass.h"
 
 namespace llvm {

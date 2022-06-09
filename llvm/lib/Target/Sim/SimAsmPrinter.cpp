@@ -12,10 +12,8 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -47,8 +45,7 @@ public:
 
 } // end anonymous namespace
 
-// Simple pseudo-instructions have their lowering (with expansion to real
-// instructions) auto-generated.
+// Simple pseudo-instructions have their lowering (with expansion to real instructions) auto-generated.
 #include "SimGenMCPseudoLowering.inc"
 
 void SimAsmPrinter::emitInstruction(const MachineInstr *MI) {
@@ -64,8 +61,7 @@ void SimAsmPrinter::emitInstruction(const MachineInstr *MI) {
 bool SimAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // Set the current MCSubtargetInfo to a copy which has the correct
   // feature bits for the current MachineFunction
-  MCSubtargetInfo &NewSTI =
-      OutStreamer->getContext().getSubtargetCopy(*TM.getMCSubtargetInfo());
+  MCSubtargetInfo &NewSTI = OutStreamer->getContext().getSubtargetCopy(*TM.getMCSubtargetInfo());
   NewSTI.setFeatureBits(MF.getSubtarget().getFeatureBits());
   STI = &NewSTI;
 

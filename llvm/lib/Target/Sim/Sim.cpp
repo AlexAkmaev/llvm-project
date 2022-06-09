@@ -18,12 +18,11 @@ static llvm::MCOperand lowerSymbolOperand(const llvm::MachineOperand &MO, llvm::
                                           const llvm::AsmPrinter &AP) {
   llvm::MCContext &Ctx = AP.OutContext;
 
-  const llvm::MCExpr *ME =
-      llvm::MCSymbolRefExpr::create(Sym, llvm::MCSymbolRefExpr::VK_None, Ctx);
+  const llvm::MCExpr *ME = llvm::MCSymbolRefExpr::create(Sym, llvm::MCSymbolRefExpr::VK_None, Ctx);
 
-  if (!MO.isJTI() && !MO.isMBB() && MO.getOffset())
-    ME = llvm::MCBinaryExpr::createAdd(
-        ME, llvm::MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+  if (!MO.isJTI() && !MO.isMBB() && MO.getOffset()) {
+    ME = llvm::MCBinaryExpr::createAdd(ME, llvm::MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+  }
 
   return llvm::MCOperand::createExpr(ME);
 }
@@ -34,14 +33,14 @@ bool llvm::lowerSimMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
 
   for (const MachineOperand &MO : MI->operands()) {
     MCOperand MCOp;
-    if (lowerSimMachineOperandToMCOperand(MO, MCOp, AP))
+    if (lowerSimMachineOperandToMCOperand(MO, MCOp, AP)) {
       OutMI.addOperand(MCOp);
+    }
   }
   return false;
 }
 
-bool llvm::lowerSimMachineOperandToMCOperand(const MachineOperand &MO,
-                                             MCOperand &MCOp, const AsmPrinter &AP) {
+bool llvm::lowerSimMachineOperandToMCOperand(const MachineOperand &MO, MCOperand &MCOp, const AsmPrinter &AP) {
   switch (MO.getType()) {
   default:
     report_fatal_error("LowerUSimMachineInstrToMCInst: unknown operand type");
@@ -80,7 +79,3 @@ bool llvm::lowerSimMachineOperandToMCOperand(const MachineOperand &MO,
   }
   return true;
 }
-
-// FunctionPass *llvm::createSimISelDag(SimTargetMachine &TM,
-//                                      CodeGenOpt::Level OptLevel) {
-// }

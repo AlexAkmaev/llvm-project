@@ -10,4 +10,4 @@
 
 using namespace llvm;
 
-void SimMachineFunctionInfo::anchor() { }
+void SimMachineFunctionInfo::anchor() {}

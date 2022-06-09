@@ -13,11 +13,11 @@
 
 namespace llvm {
 class SimTargetObjectFile : public TargetLoweringObjectFileELF {
-    MCSection *SmallDataSection;
-    MCSection *SmallBSSSection;
-
 public:
-    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
+  void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
+private:
+    MCSection *small_data_section_;
+    MCSection *small_bss_section_;
 };
 
 } // end namespace llvm

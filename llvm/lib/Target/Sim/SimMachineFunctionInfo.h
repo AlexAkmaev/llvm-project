@@ -18,37 +18,35 @@ namespace llvm {
 
 class SimMachineFunctionInfo : public MachineFunctionInfo {
 public:
-    SimMachineFunctionInfo()
-      : GlobalBaseReg(0), VarArgsFrameOffset(0), VarArgsSaveSize(0),
-        IsLeafProc(false) {}
-    explicit SimMachineFunctionInfo(MachineFunction &MF)
-      : GlobalBaseReg(0), VarArgsFrameOffset(0), VarArgsSaveSize(0),
-        IsLeafProc(false) {}
+  SimMachineFunctionInfo()
+    : GlobalBaseReg(0), VarArgsFrameOffset(0), VarArgsSaveSize(0), IsLeafProc(false) {}
+  explicit SimMachineFunctionInfo(MachineFunction &MF)
+    : GlobalBaseReg(0), VarArgsFrameOffset(0), VarArgsSaveSize(0), IsLeafProc(false) {}
 
-    Register getGlobalBaseReg() const { return GlobalBaseReg; }
-    void setGlobalBaseReg(Register Reg) { GlobalBaseReg = Reg; }
+  void setVarArgsSaveSize(int Size) { VarArgsSaveSize = Size; }
+  int getVarArgsSaveSize() const { return VarArgsSaveSize; }
 
-    void setVarArgsSaveSize(int Size) { VarArgsSaveSize = Size; }
-    int getVarArgsSaveSize() const { return VarArgsSaveSize; }
+  void setLeafProc(bool rhs) { IsLeafProc = rhs; }
+  bool isLeafProc() const { return IsLeafProc; }
 
-    int getVarArgsFrameOffset() const { return VarArgsFrameOffset; }
-    void setVarArgsFrameOffset(int Offset) { VarArgsFrameOffset = Offset; }
+  Register getGlobalBaseReg() const { return GlobalBaseReg; }
+  void setGlobalBaseReg(Register Reg) { GlobalBaseReg = Reg; }
 
-    void setLeafProc(bool rhs) { IsLeafProc = rhs; }
-    bool isLeafProc() const { return IsLeafProc; }
+  int getVarArgsFrameOffset() const { return VarArgsFrameOffset; }
+  void setVarArgsFrameOffset(int Offset) { VarArgsFrameOffset = Offset; }
 
-  private:
-    virtual void anchor();
+private:
+  virtual void anchor();
 
-    Register GlobalBaseReg;
+  Register GlobalBaseReg;
 
-    /// VarArgsFrameOffset - Frame offset to start of varargs area.
-    int VarArgsFrameOffset;
+  // VarArgsFrameOffset - Frame offset to start of varargs area.
+  int VarArgsFrameOffset;
 
-    int VarArgsSaveSize;
+  int VarArgsSaveSize;
 
-    /// IsLeafProc - True if the function is a leaf procedure.
-    bool IsLeafProc;
+  // IsLeafProc - True if the function is a leaf procedure.
+  bool IsLeafProc;
 };
 }
 

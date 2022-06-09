@@ -37,15 +37,13 @@ class SimTargetLowering : public TargetLowering {
 public:
     SimTargetLowering(const TargetMachine &TM, const SimSubtarget &STI);
 
-    MachineBasicBlock *EmitInstrWithCustomInserter(MachineInstr &MI,
-                                                   MachineBasicBlock *BB) const override;
+    MachineBasicBlock *EmitInstrWithCustomInserter(MachineInstr &MI, MachineBasicBlock *BB) const override;
 
     SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
 
     const char *getTargetNodeName(unsigned Opcode) const override;
 
-    Register getRegisterByName(const char* RegName, LLT VT,
-                               const MachineFunction &MF) const override;
+    Register getRegisterByName(const char* RegName, LLT VT, const MachineFunction &MF) const override;
 
     /// getSetCCResultType - Return the ISD::SETCC ValueType
     EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
@@ -53,38 +51,30 @@ public:
 
     /// Return true if the addressing mode represented by AM is legal for this
     /// target, for a load/store of the specified type.
-    bool isLegalAddressingMode(const DataLayout &DL, const AddrMode &AM, Type *Ty,
-                               unsigned AS,
+    bool isLegalAddressingMode(const DataLayout &DL, const AddrMode &AM, Type *Ty, unsigned AS,
                                Instruction *I = nullptr) const override;
 
-    SDValue
-    LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
-                         const SmallVectorImpl<ISD::InputArg> &Ins,
-                         const SDLoc &dl, SelectionDAG &DAG,
-                         SmallVectorImpl<SDValue> &InVals) const override;
+    SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
+                                 const SmallVectorImpl<ISD::InputArg> &Ins,
+                                 const SDLoc &dl, SelectionDAG &DAG,
+                                 SmallVectorImpl<SDValue> &InVals) const override;
 
-    SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
-                      SmallVectorImpl<SDValue> &InVals) const override;
+    SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI, SmallVectorImpl<SDValue> &InVals) const override;
 
     SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                         const SmallVectorImpl<ISD::OutputArg> &Outs,
                         const SmallVectorImpl<SDValue> &OutVals,
                         const SDLoc &dl, SelectionDAG &DAG) const override;
 
-    bool CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF,
-                        bool IsVarArg,
+    bool CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF, bool IsVarArg,
                         const SmallVectorImpl<ISD::OutputArg> &ArgsFlags,
                         LLVMContext &Context) const override;
 
     SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
-    bool mayBeEmittedAsTailCall(const CallInst *CI) const override {
-      return false;
-    }
+    bool mayBeEmittedAsTailCall(const CallInst *CI) const override { return false; }
 
-    void ReplaceNodeResults(SDNode *N,
-                            SmallVectorImpl<SDValue>& Results,
-                            SelectionDAG &DAG) const override {
+    void ReplaceNodeResults(SDNode *N, SmallVectorImpl<SDValue>& Results, SelectionDAG &DAG) const override {
       llvm_unreachable("TBD");
     }
 

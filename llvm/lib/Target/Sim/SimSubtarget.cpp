@@ -23,26 +23,20 @@ using namespace llvm;
 #define GET_SUBTARGETINFO_CTOR
 #include "SimGenSubtargetInfo.inc"
 
+SimSubtarget::SimSubtarget(const Triple &TT, const std::string &CPU, const std::string &FS, const TargetMachine &TM)
+  : SimGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS), TargetTriple(TT),
+    InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM, *this), FrameLowering(*this) {}
+
 void SimSubtarget::anchor() { }
 
-SimSubtarget &SimSubtarget::initializeSubtargetDependencies(StringRef CPU,
-                                                            StringRef FS) {
-
+SimSubtarget &SimSubtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS) {
   std::string CPUName = std::string(CPU);
   if (CPUName.empty()) {
     CPUName = "Sim";
   }
-  // Parse features string.
   ParseSubtargetFeatures(CPUName, CPUName, FS);
-
   return *this;
 }
-
-SimSubtarget::SimSubtarget(const Triple &TT, const std::string &CPU,
-                           const std::string &FS, const TargetMachine &TM)
-    : SimGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS), TargetTriple(TT),
-      InstrInfo(initializeSubtargetDependencies(CPU, FS)),
-      TLInfo(TM, *this), FrameLowering(*this) {}
 
 bool SimSubtarget::enableMachineScheduler() const {
   return true;

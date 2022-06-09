@@ -13,12 +13,10 @@
 
 using namespace llvm;
 
-void SimTargetObjectFile::Initialize(MCContext &Ctx,
-                                     const TargetMachine &TM) {
+void SimTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
     TargetLoweringObjectFileELF::Initialize(Ctx, TM);
-
-    SmallDataSection = getContext().getELFSection(
+    small_data_section_ = getContext().getELFSection(
                        ".sdata", ELF::SHT_PROGBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC);
-    SmallBSSSection = getContext().getELFSection(".sbss", ELF::SHT_NOBITS,
+    small_bss_section_ = getContext().getELFSection(".sbss", ELF::SHT_NOBITS,
                                                  ELF::SHF_WRITE | ELF::SHF_ALLOC);
 }

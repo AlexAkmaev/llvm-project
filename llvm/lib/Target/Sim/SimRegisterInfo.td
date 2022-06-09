@@ -11,7 +11,6 @@
 //  Declarations that describe the Sim register file
 //===----------------------------------------------------------------------===//
 
-// For tablegen(... -gen-emitter)  in CMakeLists.txt
 class SimReg<bits<16> Enc, string n> : Register<n> {
   let HWEncoding = Enc;
   let Namespace = "SIM";
@@ -39,5 +38,4 @@ def CPURegs : RegisterClass<"SIM", [i32], 32, (add
 
 def GPR : RegisterClass<"SIM", [i32], 32, (add CPURegs)>;
 
-// TODO: decide if GPROpnd is required
 def GPROpnd : RegisterOperand<GPR>;
